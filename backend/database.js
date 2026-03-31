@@ -15,10 +15,7 @@ async function init() {
 
   const client = createClient({ url, authToken });
 
-  // Enable foreign keys
-  //await client.execute('PRAGMA foreign_keys = ON');
-
-  // Create tables one by one (compatible with Turso remote)
+  // ── Create tables (compatible with Turso remote) ──
   await client.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,14 +37,13 @@ async function init() {
     )
   `);
 
+  // Registrations table — remove foreign key constraints for Turso
   await client.execute(`
     CREATE TABLE IF NOT EXISTS registrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       activity_id INTEGER NOT NULL,
       registered_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
       UNIQUE(user_id, activity_id)
     )
   `);

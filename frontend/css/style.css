@@ -825,3 +825,97 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   .form-grid { grid-template-columns: 1fr; }
   .modal-info-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===== ADMIN ASSIGNMENT PANEL (new) ===== */
+.admin-panel {
+  margin-top: 16px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.admin-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.assign-row {
+  display: flex;
+  gap: 8px;
+}
+
+.assign-select {
+  flex: 1;
+  background: var(--bg-4);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  color: var(--text);
+  font-family: 'Heebo', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  direction: rtl;
+  transition: border-color var(--transition);
+}
+
+.assign-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.assign-select option { background: var(--bg-4); }
+
+/* Assigned worker row with remove button */
+.assigned-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 4px 3px 10px;
+}
+
+.assigned-row .registered-pill {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.btn-remove-assigned {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  padding: 0;
+}
+.btn-remove-assigned:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: rgba(248,81,73,0.4);
+}
+
+/* Admin footer in modal */
+.modal-footer-admin { border-top: 1px solid var(--border); padding: 16px 20px 20px; }
+
+/* Make modal taller for admin to fit panel */
+@media (min-width: 500px) {
+  .modal-card { max-width: 520px; }
+}

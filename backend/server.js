@@ -23,26 +23,26 @@ app.use(session({
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 async function start() {
-  // Initialize DB first, then attach routes
   const db = await initDb();
+  console.log('✅ בסיס הנתונים אותחל בהצלחה');
 
-  // Pass db into routes
   app.use('/api/auth',          require('./routes/auth')(db));
   app.use('/api/users',         require('./routes/users')(db));
   app.use('/api/activities',    require('./routes/activities')(db));
   app.use('/api/registrations', require('./routes/registrations')(db));
+  app.use('/api/assignments',   require('./routes/assignments')(db));
 
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
   });
 
   app.listen(PORT, () => {
-    console.log(`\n✅ השרת פועל: http://localhost:${PORT}`);
+    console.log(`\n🚀 השרת פועל: http://localhost:${PORT}`);
     console.log(`   התחבר עם שם המשתמש: admin\n`);
   });
 }
 
 start().catch(err => {
-  console.error('שגיאה בהפעלת השרת:', err);
+  console.error('❌ שגיאה בהפעלת השרת:', err);
   process.exit(1);
 });

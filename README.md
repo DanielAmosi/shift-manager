@@ -1,41 +1,87 @@
-# 📋 מנהל משמרות — Shift Manager
+# 📋 מנהל משמרות — Shift Manager v2
 
-מערכת ניהול משמרות עובדים מלאה בעברית, עם ממשק RTL, אימות, לוח שבועי, ובדיקות חפיפות זמן.
+מערכת ניהול משמרות עובדים עם Turso (libSQL) ושיבוץ עובדים על ידי מנהל.
 
 ---
 
 ## 🚀 הרצה מקומית
 
-### דרישות מוקדמות
-- Node.js 18+
-- npm
-
-### התקנה והרצה
-
+### התקנה
 ```bash
-# 1. התקן תלויות
 npm install
-
-# 2. הרץ את השרת
 npm start
-
-# 3. פתח בדפדפן
 # http://localhost:3000
 ```
 
-### פיתוח עם nodemon (רענון אוטומטי)
+בלי Turso — האפליקציה תשתמש אוטומטית בקובץ SQLite מקומי.
+
+---
+
+## 🗄️ הגדרת Turso (בסיס נתונים בענן)
+
+### שלב 1 — התקן את Turso CLI
 ```bash
-npm run dev
+# Mac / Linux
+curl -sSfL https://get.tur.so/install.sh | bash
+
+# Windows (PowerShell)
+winget install chiselstrike.turso
+```
+
+### שלב 2 — התחבר
+```bash
+turso auth login
+```
+
+### שלב 3 — צור בסיס נתונים
+```bash
+turso db create shift-manager
+```
+
+### שלב 4 — קבל URL ו-Token
+```bash
+# URL
+turso db show shift-manager --url
+
+# Token
+turso db tokens create shift-manager
+```
+
+### שלב 5 — הגדר משתני סביבה
+
+צור קובץ `.env` בשורש הפרויקט (או הגדר ב-Render):
+
+```env
+DB_URL=libsql://shift-manager-YOUR-USERNAME.turso.io
+DB_AUTH_TOKEN=YOUR_TOKEN_HERE
+SESSION_SECRET=any-long-random-string
+```
+
+לטעינת `.env` מקומית — התקן dotenv:
+```bash
+npm install dotenv
+```
+והוסף בתחילת `backend/server.js`:
+```js
+require('dotenv').config();
 ```
 
 ---
 
-## 🔐 התחברות
+## ☁️ פריסה ב-Render
 
-| שם משתמש | תפקיד |
-|-----------|--------|
-| `admin`   | מנהל מערכת — יצירה/מחיקה של הכל |
-| כל משתמש שנוצר על ידי admin | עובד |
+| שדה | ערך |
+|-----|-----|
+| **Build Command** | `npm install` |
+| **Start Command** | `npm start` |
+
+**Environment Variables ב-Render:**
+```
+DB_URL          = libsql://...
+DB_AUTH_TOKEN   = eyJ...
+SESSION_SECRET  = מחרוזת-סודית-כלשהי
+NODE_ENV        = production
+```
 
 ---
 
@@ -44,102 +90,34 @@ npm run dev
 ```
 shift-manager/
 ├── package.json
-├── README.md
 ├── backend/
-│   ├── server.js          # שרת Express ראשי
-│   ├── database.js        # אתחול SQLite
+│   ├── server.js
+│   ├── database.js              ← Turso/libSQL
 │   └── routes/
-│       ├── auth.js        # התחברות/יציאה
-│       ├── users.js       # ניהול משתמשים
-│       ├── activities.js  # ניהול פעילויות
-│       └── registrations.js # הרשמה לפעילויות
+│       ├── auth.js
+│       ├── users.js
+│       ├── activities.js
+│       ├── registrations.js
+│       └── assignments.js       ← חדש: שיבוץ עובדים
 ├── frontend/
-│   ├── index.html         # דף ה-HTML הראשי
-│   ├── css/
-│   │   └── style.css      # עיצוב RTL
-│   └── js/
-│       └── app.js         # לוגיקת הלקוח
-└── database/
-    └── shifts.db          # נוצר אוטומטית בהרצה ראשונה
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/app.js
 ```
 
 ---
 
-## ☁️ פריסה ב-Render (חינמי)
+## ✨ פיצ'רים חדשים בגרסה זו
 
-### שלב 1: העלה ל-GitHub
-```bash
-git init
-git add .
-git commit -m "initial commit"
-git remote add origin <YOUR_GITHUB_URL>
-git push -u origin main
-```
+### שיבוץ עובדים על ידי מנהל
+- לחץ על כל פעילות בלוח השבועי
+- בחלונית הפעילות → בחר עובד מהרשימה → לחץ **שבץ**
+- ניתן להסיר עובד על ידי לחיצה על × ליד שמו
+- כל חוקי החפיפות נשמרים גם בשיבוץ ידני
 
-### שלב 2: צור שירות ב-Render
-1. היכנס ל-[render.com](https://render.com) וצור חשבון
-2. לחץ **New → Web Service**
-3. חבר את ה-GitHub repository שלך
-
-### שלב 3: הגדרות השירות
-| שדה | ערך |
-|-----|-----|
-| **Environment** | `Node` |
-| **Build Command** | `npm install` |
-| **Start Command** | `npm start` |
-| **Instance Type** | `Free` |
-
-### שלב 4: משתני סביבה (אופציונלי אך מומלץ)
-ב-Render → Environment → Add Environment Variable:
-```
-SESSION_SECRET = <מחרוזת סודית ארוכה>
-NODE_ENV = production
-```
-
-### שלב 5: Deploy
-לחץ **Create Web Service** וחכה כ-2 דקות לבנייה.
-
-> ⚠️ **שים לב**: ב-Render Free Tier, הנתונים נמחקים בכל deploy חדש
-> (ה-disk אינו persistent). לשמירת נתונים קבועה, שדרג ל-plan בתשלום
-> או השתמש ב-Render Disk / PlanetScale / Turso לבסיס הנתונים.
-
----
-
-## 🔧 API Endpoints
-
-### אימות
+### API Endpoints חדשים
 | Method | Path | תיאור |
 |--------|------|-------|
-| POST | `/api/auth/login` | התחברות עם שם משתמש |
-| POST | `/api/auth/logout` | התנתקות |
-| GET | `/api/auth/me` | מידע על המשתמש הנוכחי |
-
-### משתמשים (admin בלבד)
-| Method | Path | תיאור |
-|--------|------|-------|
-| GET | `/api/users` | רשימת כל המשתמשים |
-| POST | `/api/users` | יצירת משתמש חדש |
-| DELETE | `/api/users/:id` | מחיקת משתמש |
-
-### פעילויות
-| Method | Path | תיאור |
-|--------|------|-------|
-| GET | `/api/activities` | כל הפעילויות |
-| GET | `/api/activities/:id` | פעילות ספציפית + רשומים |
-| POST | `/api/activities` | יצירת פעילות (admin) |
-| DELETE | `/api/activities/:id` | מחיקת פעילות (admin) |
-
-### הרשמות
-| Method | Path | תיאור |
-|--------|------|-------|
-| POST | `/api/registrations` | הרשמה לפעילות |
-| DELETE | `/api/registrations/:activity_id` | ביטול הרשמה |
-| GET | `/api/registrations/my` | הפעילויות של המשתמש הנוכחי |
-
----
-
-## ✅ לוגיקת חפיפות זמן
-
-המערכת בודקת חפיפות אוטומטית:
-- **אם שתי הפעילויות לא מאפשרות חפיפה** → ההרשמה נחסמת
-- **אם לפחות אחת מהפעילויות מאפשרת חפיפה** → ההרשמה מותרת
+| GET | `/api/assignments/available/:activity_id` | עובדים זמינים לשיבוץ |
+| POST | `/api/assignments` | שיבוץ עובד לפעילות (admin) |
+| DELETE | `/api/assignments/:activity_id/:user_id` | הסרת עובד מפעילות (admin) |

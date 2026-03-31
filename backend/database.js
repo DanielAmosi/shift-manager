@@ -16,7 +16,7 @@ async function init() {
   const client = createClient({ url, authToken });
 
   // Enable foreign keys
-  await client.execute('PRAGMA foreign_keys = ON');
+  //await client.execute('PRAGMA foreign_keys = ON');
 
   // Create tables one by one (compatible with Turso remote)
   await client.execute(`

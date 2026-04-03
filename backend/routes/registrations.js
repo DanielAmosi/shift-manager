@@ -9,15 +9,20 @@ module.exports = function (db) {
     next();
   }
 
-  function timesOverlap(s1, e1, s2, e2) {
-    return s1 < e2 && e1 > s2;
+  function timesOverlap(s1, e1, s2, e2) { return s1 < e2 && e1 > s2; }
+
+  function getToday() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
   // GET /api/registrations/my
+  // query: period=future|past  OR  week_start+week_end
   router.get('/my', requireAuth, async (req, res) => {
     try {
-      const { week_start, week_end } = req.query;
+      const { week_start, week_end, period } = req.query;
       const userId = req.session.userId;
+      const today  = getToday();
 
       let sql = `
         SELECT a.*, r.registered_at FROM activities a
@@ -29,9 +34,18 @@ module.exports = function (db) {
       if (week_start && week_end) {
         sql += ' AND a.date >= ? AND a.date <= ?';
         args.push(week_start, week_end);
+      } else if (period === 'future') {
+        sql += ' AND a.date >= ?';
+        args.push(today);
+      } else if (period === 'past') {
+        sql += ' AND a.date < ?';
+        args.push(today);
       }
 
-      sql += ' ORDER BY a.date ASC, a.start_time ASC';
+      sql += (period === 'past')
+        ? ' ORDER BY a.date DESC, a.start_time DESC'
+        : ' ORDER BY a.date ASC, a.start_time ASC';
+
       const activities = await db.all(sql, args);
       res.json(activities);
     } catch (e) {
@@ -40,27 +54,27 @@ module.exports = function (db) {
     }
   });
 
-  // POST /api/registrations — user self-registers
+  // POST /api/registrations — self-register
   router.post('/', requireAuth, async (req, res) => {
     try {
       const { activity_id } = req.body;
       const userId = req.session.userId;
 
-      if (!activity_id)
-        return res.status(400).json({ error: 'נא לציין פעילות' });
+      if (!activity_id) return res.status(400).json({ error: 'נא לציין פעילות' });
 
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [activity_id]);
-      if (!activity)
-        return res.status(404).json({ error: 'פעילות לא נמצאה' });
+      if (!activity) return res.status(404).json({ error: 'פעילות לא נמצאה' });
+
+      // Prevent registering to past activities
+      const today = getToday();
+      if (activity.date < today)
+        return res.status(400).json({ error: 'לא ניתן להירשם לפעילות שכבר עברה' });
 
       const already = await db.get(
-        'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?',
-        [userId, activity_id]
+        'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [userId, activity_id]
       );
-      if (already)
-        return res.status(409).json({ error: 'כבר רשום לפעילות זו' });
+      if (already) return res.status(409).json({ error: 'כבר רשום לפעילות זו' });
 
-      // Overlap check
       const userActivities = await db.all(`
         SELECT a.* FROM activities a
         JOIN registrations r ON r.activity_id = a.id
@@ -77,10 +91,7 @@ module.exports = function (db) {
         }
       }
 
-      await db.run(
-        'INSERT INTO registrations (user_id, activity_id) VALUES (?, ?)',
-        [userId, activity_id]
-      );
+      await db.run('INSERT INTO registrations (user_id, activity_id) VALUES (?, ?)', [userId, activity_id]);
       res.status(201).json({ message: 'נרשמת לפעילות בהצלחה' });
     } catch (e) {
       console.error(e);
@@ -88,23 +99,18 @@ module.exports = function (db) {
     }
   });
 
-  // DELETE /api/registrations/:activity_id — user self-unregisters
+  // DELETE /api/registrations/:activity_id — self-unregister
   router.delete('/:activity_id', requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId;
       const { activity_id } = req.params;
 
       const reg = await db.get(
-        'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?',
-        [userId, activity_id]
+        'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [userId, activity_id]
       );
-      if (!reg)
-        return res.status(404).json({ error: 'לא רשום לפעילות זו' });
+      if (!reg) return res.status(404).json({ error: 'לא רשום לפעילות זו' });
 
-      await db.run(
-        'DELETE FROM registrations WHERE user_id = ? AND activity_id = ?',
-        [userId, activity_id]
-      );
+      await db.run('DELETE FROM registrations WHERE user_id = ? AND activity_id = ?', [userId, activity_id]);
       res.json({ message: 'הרשמה בוטלה בהצלחה' });
     } catch (e) {
       console.error(e);

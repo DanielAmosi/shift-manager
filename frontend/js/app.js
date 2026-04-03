@@ -1,73 +1,68 @@
 /* ============================================================
-   SHIFT MANAGER — Frontend Application
+   SHIFT MANAGER — Frontend Application v3
    ============================================================ */
 
 const API = {
   async request(method, path, body) {
-    const opts = {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin'
-    };
+    const opts = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' };
     if (body !== undefined) opts.body = JSON.stringify(body);
-    const res = await fetch('/api' + path, opts);
+    const res  = await fetch('/api' + path, opts);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'שגיאה בשרת');
     return data;
   },
-  get:    (path)        => API.request('GET',    path),
-  post:   (path, body)  => API.request('POST',   path, body),
-  delete: (path)        => API.request('DELETE', path)
+  get:    p      => API.request('GET',    p),
+  post:   (p, b) => API.request('POST',   p, b),
+  delete: p      => API.request('DELETE', p)
 };
 
 // ===== STATE =====
-let currentUser     = null;
+let currentUser      = null;
 let currentWeekStart = getWeekStart(new Date());
-let myWeekStart      = getWeekStart(new Date());
+let weeklyTab        = 'future';   // 'future' | 'past'
+let myTab            = 'future';
+let adminActTab      = 'future';
 
 // ===== UTILS =====
 function getWeekStart(date) {
   const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay()); // Sunday
+  d.setDate(d.getDate() - d.getDay());
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
 function formatDate(date) {
   const d = new Date(date);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 function formatDateHebrew(dateStr) {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL', {
-    weekday: 'long', day: 'numeric', month: 'long'
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 }
 
 function formatDateShort(dateStr) {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL', {
-    day: 'numeric', month: 'numeric'
-  });
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
 }
 
-function getWeekEnd(weekStart) {
-  const d = new Date(weekStart);
+function getWeekEnd(ws) {
+  const d = new Date(ws);
   d.setDate(d.getDate() + 6);
   return d;
 }
 
-function formatWeekLabel(weekStart) {
-  const end  = getWeekEnd(weekStart);
+function formatWeekLabel(ws) {
+  const end = getWeekEnd(ws);
   const opts = { day: 'numeric', month: 'long' };
-  return `${weekStart.toLocaleDateString('he-IL', opts)} – ${end.toLocaleDateString('he-IL', opts)}`;
+  return `${ws.toLocaleDateString('he-IL', opts)} – ${end.toLocaleDateString('he-IL', opts)}`;
 }
 
-function isToday(dateStr) {
-  return dateStr === formatDate(new Date());
-}
+function todayStr() { return formatDate(new Date()); }
+
+function isPastDate(dateStr) { return dateStr < todayStr(); }
+
+function isToday(dateStr) { return dateStr === todayStr(); }
 
 function escapeHtml(str) {
   const d = document.createElement('div');
@@ -75,9 +70,7 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-function getInitials(name) {
-  return name ? name.charAt(0).toUpperCase() : '?';
-}
+function getInitials(name) { return name ? name.charAt(0).toUpperCase() : '?'; }
 
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
@@ -116,30 +109,23 @@ async function handleLogin() {
   try {
     currentUser = await API.post('/auth/login', { username });
     initApp();
-  } catch (e) {
-    showError('login-error', e.message);
-  }
+  } catch (e) { showError('login-error', e.message); }
 }
 
-// ===== INIT APP =====
 function initApp() {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('app-screen').classList.add('active');
-
   document.getElementById('sidebar-username').textContent     = currentUser.isAdmin ? 'מנהל' : 'עובד';
   document.getElementById('user-display-name').textContent    = currentUser.username;
   document.getElementById('user-role-label').textContent      = currentUser.isAdmin ? 'מנהל מערכת' : 'עובד';
   document.getElementById('user-avatar-initials').textContent = getInitials(currentUser.username);
-
   document.querySelectorAll('.admin-only').forEach(el =>
     el.classList.toggle('hidden', !currentUser.isAdmin)
   );
-
   switchView('weekly');
-  loadWeeklyView();
+  setWeeklyTab('future');
 }
 
-// ===== LOGOUT =====
 async function handleLogout() {
   await API.post('/auth/logout');
   currentUser = null;
@@ -149,7 +135,20 @@ async function handleLogout() {
   hideError('login-error');
 }
 
-// ===== WEEKLY VIEW =====
+// ===== WEEKLY VIEW TABS =====
+function setWeeklyTab(tab) {
+  weeklyTab = tab;
+  document.getElementById('weekly-tab-future').classList.toggle('active', tab === 'future');
+  document.getElementById('weekly-tab-past').classList.toggle('active', tab === 'past');
+  document.getElementById('weekly-future-content').classList.toggle('hidden', tab !== 'future');
+  document.getElementById('weekly-past-content').classList.toggle('hidden', tab !== 'past');
+  document.getElementById('week-controls').classList.toggle('hidden', tab !== 'future');
+
+  if (tab === 'future') loadWeeklyView();
+  else loadWeeklyPast();
+}
+
+// ===== WEEKLY FUTURE — calendar grid =====
 async function loadWeeklyView() {
   const weekEnd = getWeekEnd(currentWeekStart);
   document.getElementById('week-label').textContent = formatWeekLabel(currentWeekStart);
@@ -167,8 +166,8 @@ async function loadWeeklyView() {
   for (let i = 0; i < 7; i++) {
     const day = new Date(currentWeekStart);
     day.setDate(day.getDate() + i);
-    const dayStr       = formatDate(day);
-    const dayActivities = activities.filter(a => a.date === dayStr);
+    const dayStr = formatDate(day);
+    const dayActs = activities.filter(a => a.date === dayStr);
 
     const col = document.createElement('div');
     col.className = 'day-column' + (isToday(dayStr) ? ' today' : '');
@@ -182,39 +181,141 @@ async function loadWeeklyView() {
     grid.appendChild(col);
 
     const dayEl = document.getElementById('day-' + dayStr);
-    if (dayActivities.length === 0) {
+    if (dayActs.length === 0) {
       dayEl.innerHTML = '<div class="empty-day">אין פעילויות</div>';
     } else {
-      dayActivities.forEach(act => dayEl.appendChild(buildActivityChip(act)));
+      dayActs.forEach(act => dayEl.appendChild(buildActivityChip(act, false)));
     }
   }
 }
 
-function buildActivityChip(act) {
+// ===== WEEKLY PAST — flat list =====
+async function loadWeeklyPast() {
+  const container = document.getElementById('weekly-past-list');
+  container.innerHTML = '<div class="loading-msg">טוען...</div>';
+  try {
+    const activities = await API.get('/activities?period=past');
+    renderActivitiesList(container, activities, true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ===== CHIP (calendar) =====
+function buildActivityChip(act, isPast) {
+  const names = act.registered_names
+    ? act.registered_names.split(', ').slice(0, 3)
+    : [];
+  const extra = (act.registrations_count || 0) - names.length;
+
   const div = document.createElement('div');
-  div.className = 'activity-chip' + (act.user_registered ? ' registered' : '');
+  div.className = 'activity-chip' + (act.user_registered ? ' registered' : '') + (isPast ? ' past' : '');
   div.innerHTML = `
     <div class="chip-title">${escapeHtml(act.title)}</div>
     <div class="chip-time">${act.start_time}–${act.end_time}</div>
+    <div class="chip-names">
+      ${names.length > 0
+        ? names.map(n => `<span class="chip-name">${escapeHtml(n)}</span>`).join('') +
+          (extra > 0 ? `<span class="chip-name chip-name-more">+${extra}</span>` : '')
+        : '<span class="chip-name chip-name-empty">אין רשומים</span>'
+      }
+    </div>
     <div class="chip-tags">
       ${act.user_registered ? '<span class="chip-tag tag-registered">רשום ✓</span>' : ''}
-      ${act.allow_overlap   ? '<span class="chip-tag tag-overlap">חפיפה מותרת</span>' : ''}
-      <span class="chip-tag tag-registered-count">${act.registrations_count || 0} רשומים</span>
+      ${act.allow_overlap   ? '<span class="chip-tag tag-overlap">חפיפה</span>' : ''}
     </div>
   `;
-  div.addEventListener('click', () => openActivityModal(act.id));
+  div.addEventListener('click', () => openActivityModal(act.id, isPast));
   return div;
+}
+
+// ===== FLAT ACTIVITY ROW (lists) =====
+function renderActivitiesList(container, activities, isPast, showUnregister = false) {
+  if (activities.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">${isPast ? '🕐' : '📅'}</div>
+        <p>${isPast ? 'אין פעילויות עבר' : 'אין פעילויות עתידיות'}</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = activities.map(act => {
+    const names = act.registered_names ? act.registered_names.split(', ') : [];
+    return `
+      <div class="activity-row ${isPast ? 'past' : ''}">
+        <div class="act-info" style="cursor:pointer" onclick="openActivityModal(${act.id}, ${isPast})">
+          <div class="act-title">${escapeHtml(act.title)}</div>
+          <div class="act-meta">
+            <span>📅 ${formatDateHebrew(act.date)}</span>
+            <span>🕐 ${act.start_time} – ${act.end_time}</span>
+            ${act.allow_overlap ? '<span>🔀 חפיפה מותרת</span>' : ''}
+          </div>
+          <div class="act-registered-names">
+            ${names.length > 0
+              ? names.map(n => `<span class="name-pill">${escapeHtml(n)}</span>`).join('')
+              : '<span style="font-size:12px;color:var(--text-3)">אין רשומים</span>'
+            }
+          </div>
+        </div>
+        ${showUnregister && !isPast
+          ? `<button class="btn btn-ghost" onclick="unregisterActivity(${act.id})">בטל הרשמה</button>`
+          : ''
+        }
+      </div>
+    `;
+  }).join('');
+}
+
+// ===== MY SCHEDULE TABS =====
+function setMyTab(tab) {
+  myTab = tab;
+  document.getElementById('my-tab-future').classList.toggle('active', tab === 'future');
+  document.getElementById('my-tab-past').classList.toggle('active', tab === 'past');
+  document.getElementById('my-future-content').classList.toggle('hidden', tab !== 'future');
+  document.getElementById('my-past-content').classList.toggle('hidden', tab !== 'past');
+  if (tab === 'future') loadMyFuture();
+  else loadMyPast();
+}
+
+async function loadMySchedule() { setMyTab(myTab); }
+
+async function loadMyFuture() {
+  const container = document.getElementById('my-future-list');
+  container.innerHTML = '<div class="loading-msg">טוען...</div>';
+  try {
+    const activities = await API.get('/registrations/my?period=future');
+    renderActivitiesList(container, activities, false, true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadMyPast() {
+  const container = document.getElementById('my-past-list');
+  container.innerHTML = '<div class="loading-msg">טוען...</div>';
+  try {
+    const activities = await API.get('/registrations/my?period=past');
+    renderActivitiesList(container, activities, true, false);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function unregisterActivity(actId) {
+  if (!confirm('לבטל הרשמה לפעילות זו?')) return;
+  try {
+    await API.delete(`/registrations/${actId}`);
+    showToast('הרשמה בוטלה בהצלחה');
+    loadMyFuture();
+    loadWeeklyView();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ===== ACTIVITY MODAL =====
 let currentActivityId = null;
 
-async function openActivityModal(activityId) {
+async function openActivityModal(activityId, isPast = false) {
   currentActivityId = activityId;
   hideError('assign-error');
 
   try {
     const act = await API.get(`/activities/${activityId}`);
+    const pastActivity = isPast || isPastDate(act.date);
 
     document.getElementById('modal-title').textContent   = act.title;
     document.getElementById('modal-date').textContent    = formatDateHebrew(act.date);
@@ -222,76 +323,75 @@ async function openActivityModal(activityId) {
     document.getElementById('modal-overlap').textContent = act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת';
     document.getElementById('modal-count').textContent   = act.registrations.length + ' עובדים';
 
-    // ── Render registered workers ──
     renderRegisteredList(act.registrations, activityId);
 
     if (currentUser.isAdmin) {
-      // Show admin panel, hide user footer
       document.getElementById('modal-admin-panel').classList.remove('hidden');
       document.getElementById('modal-footer-user').classList.add('hidden');
       document.getElementById('modal-footer-admin').classList.remove('hidden');
-
-      // Load available users into dropdown
       await loadAvailableUsers(activityId);
-
-      // Delete button
       document.getElementById('modal-delete-btn').onclick = () => deleteActivityFromModal(activityId);
-
     } else {
-      // Regular user: show register/unregister button
       document.getElementById('modal-admin-panel').classList.add('hidden');
-      document.getElementById('modal-footer-user').classList.remove('hidden');
       document.getElementById('modal-footer-admin').classList.add('hidden');
+      document.getElementById('modal-footer-user').classList.remove('hidden');
 
-      const isRegistered = act.registrations.some(r => r.id === currentUser.id);
       const btn = document.getElementById('modal-register-btn');
 
-      if (isRegistered) {
+      if (pastActivity) {
+        // Past activity — view only
         btn.className   = 'btn btn-ghost btn-full';
-        btn.textContent = 'בטל הרשמה';
-        btn.onclick     = async () => {
-          try {
-            await API.delete(`/registrations/${activityId}`);
-            closeModal();
-            showToast('הרשמה בוטלה בהצלחה');
-            loadWeeklyView();
-          } catch (e) { showToast(e.message, 'error'); }
-        };
+        btn.textContent = '🕐 פעילות זו כבר התקיימה';
+        btn.disabled    = true;
+        btn.style.opacity = '0.5';
+        btn.onclick     = null;
       } else {
-        btn.className   = 'btn btn-primary btn-full';
-        btn.textContent = 'הרשם לפעילות';
-        btn.onclick     = async () => {
-          try {
-            await API.post('/registrations', { activity_id: activityId });
-            closeModal();
-            showToast('נרשמת לפעילות בהצלחה! ✅');
-            loadWeeklyView();
-          } catch (e) { showToast(e.message, 'error'); }
-        };
+        btn.disabled  = false;
+        btn.style.opacity = '1';
+        const isRegistered = act.registrations.some(r => r.id === currentUser.id);
+        if (isRegistered) {
+          btn.className   = 'btn btn-ghost btn-full';
+          btn.textContent = 'בטל הרשמה';
+          btn.onclick     = async () => {
+            try {
+              await API.delete(`/registrations/${activityId}`);
+              closeModal();
+              showToast('הרשמה בוטלה בהצלחה');
+              loadWeeklyView();
+              if (myTab === 'future') loadMyFuture();
+            } catch (e) { showToast(e.message, 'error'); }
+          };
+        } else {
+          btn.className   = 'btn btn-primary btn-full';
+          btn.textContent = 'הרשם לפעילות';
+          btn.onclick     = async () => {
+            try {
+              await API.post('/registrations', { activity_id: activityId });
+              closeModal();
+              showToast('נרשמת לפעילות בהצלחה! ✅');
+              loadWeeklyView();
+              if (myTab === 'future') loadMyFuture();
+            } catch (e) { showToast(e.message, 'error'); }
+          };
+        }
       }
     }
 
     document.getElementById('activity-modal').classList.remove('hidden');
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
-// Render the list of registered workers (with remove buttons for admin)
 function renderRegisteredList(registrations, activityId) {
   const list = document.getElementById('modal-registered-list');
-
   if (registrations.length === 0) {
     list.innerHTML = '<span style="color:var(--text-3);font-size:13px">אין עובדים משובצים עדיין</span>';
     return;
   }
-
   if (currentUser.isAdmin) {
     list.innerHTML = registrations.map(r => `
-      <div class="assigned-row" id="assigned-row-${r.id}">
+      <div class="assigned-row">
         <span class="registered-pill">${escapeHtml(r.username)}</span>
-        <button class="btn-remove-assigned" title="הסר עובד"
-          onclick="removeAssignment(${activityId}, ${r.id})">
+        <button class="btn-remove-assigned" onclick="removeAssignment(${activityId}, ${r.id})">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -305,72 +405,43 @@ function renderRegisteredList(registrations, activityId) {
   }
 }
 
-// Load available (unassigned) users into the dropdown
 async function loadAvailableUsers(activityId) {
   try {
     const users = await API.get(`/assignments/available/${activityId}`);
-    const sel   = document.getElementById('assign-user-select');
+    const sel = document.getElementById('assign-user-select');
     sel.innerHTML = users.length === 0
       ? '<option value="">— כל העובדים כבר משובצים —</option>'
       : '<option value="">— בחר עובד לשיבוץ —</option>' +
         users.map(u => `<option value="${u.id}">${escapeHtml(u.username)}</option>`).join('');
-  } catch (e) {
-    console.error(e);
-  }
+  } catch (e) { console.error(e); }
 }
 
-// Admin assigns a user
 async function assignUser() {
   const userId = document.getElementById('assign-user-select').value;
   hideError('assign-error');
-
-  if (!userId) {
-    showError('assign-error', 'נא לבחור עובד מהרשימה');
-    return;
-  }
-
+  if (!userId) { showError('assign-error', 'נא לבחור עובד מהרשימה'); return; }
   try {
-    const res = await API.post('/assignments', {
-      user_id: parseInt(userId),
-      activity_id: currentActivityId
-    });
+    const res = await API.post('/assignments', { user_id: parseInt(userId), activity_id: currentActivityId });
     showToast(res.message + ' ✅');
-
-    // Refresh modal content
     const act = await API.get(`/activities/${currentActivityId}`);
     document.getElementById('modal-count').textContent = act.registrations.length + ' עובדים';
     renderRegisteredList(act.registrations, currentActivityId);
     await loadAvailableUsers(currentActivityId);
-
-    // Refresh weekly view in background
     loadWeeklyView();
-    if (document.getElementById('view-manage-activities').classList.contains('active')) {
-      loadAdminActivities();
-    }
-  } catch (e) {
-    showError('assign-error', e.message);
-  }
+    if (adminActTab) loadAdminActivities();
+  } catch (e) { showError('assign-error', e.message); }
 }
 
-// Admin removes a user
 async function removeAssignment(activityId, userId) {
   try {
     const res = await API.delete(`/assignments/${activityId}/${userId}`);
     showToast(res.message);
-
-    // Refresh modal content
     const act = await API.get(`/activities/${activityId}`);
     document.getElementById('modal-count').textContent = act.registrations.length + ' עובדים';
     renderRegisteredList(act.registrations, activityId);
     await loadAvailableUsers(activityId);
-
     loadWeeklyView();
-    if (document.getElementById('view-manage-activities').classList.contains('active')) {
-      loadAdminActivities();
-    }
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function deleteActivityFromModal(activityId) {
@@ -380,12 +451,8 @@ async function deleteActivityFromModal(activityId) {
     closeModal();
     showToast('הפעילות נמחקה בהצלחה');
     loadWeeklyView();
-    if (document.getElementById('view-manage-activities').classList.contains('active')) {
-      loadAdminActivities();
-    }
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+    loadAdminActivities();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 function closeModal() {
@@ -394,64 +461,22 @@ function closeModal() {
   hideError('assign-error');
 }
 
-// ===== MY SCHEDULE VIEW =====
-async function loadMySchedule() {
-  const weekEnd = getWeekEnd(myWeekStart);
-  document.getElementById('my-week-label').textContent = formatWeekLabel(myWeekStart);
-
-  try {
-    const activities = await API.get(
-      `/registrations/my?week_start=${formatDate(myWeekStart)}&week_end=${formatDate(weekEnd)}`
-    );
-    const list = document.getElementById('my-activities-list');
-
-    if (activities.length === 0) {
-      list.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📅</div>
-          <p>לא נרשמת לפעילויות בשבוע זה</p>
-        </div>`;
-      return;
-    }
-
-    list.innerHTML = activities.map(act => `
-      <div class="activity-row">
-        <div class="act-info">
-          <div class="act-title">${escapeHtml(act.title)}</div>
-          <div class="act-meta">
-            <span>📅 ${formatDateHebrew(act.date)}</span>
-            <span>🕐 ${act.start_time} – ${act.end_time}</span>
-            ${act.allow_overlap ? '<span>🔀 חפיפה מותרת</span>' : ''}
-          </div>
-        </div>
-        <button class="btn btn-ghost" onclick="unregisterFromMySchedule(${act.id})">בטל הרשמה</button>
-      </div>
-    `).join('');
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+// ===== ADMIN: MANAGE ACTIVITIES TABS =====
+function setAdminActTab(tab) {
+  adminActTab = tab;
+  document.getElementById('admin-act-tab-future').classList.toggle('active', tab === 'future');
+  document.getElementById('admin-act-tab-past').classList.toggle('active', tab === 'past');
+  loadAdminActivities();
 }
 
-async function unregisterFromMySchedule(actId) {
-  if (!confirm('לבטל הרשמה לפעילות זו?')) return;
-  try {
-    await API.delete(`/registrations/${actId}`);
-    showToast('הרשמה בוטלה בהצלחה');
-    loadMySchedule();
-    loadWeeklyView();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
-}
-
-// ===== ADMIN: MANAGE ACTIVITIES =====
 async function loadAdminActivities() {
   try {
-    const activities = await API.get('/activities');
+    const activities = await API.get(`/activities?period=${adminActTab}`);
     const container  = document.getElementById('admin-activities-list');
+    const isPast     = adminActTab === 'past';
 
     if (activities.length === 0) {
-      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>אין פעילויות במערכת</p></div>`;
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>אין פעילויות ${isPast ? 'עבר' : 'עתידיות'}</p></div>`;
       return;
     }
 
@@ -459,38 +484,39 @@ async function loadAdminActivities() {
       <table>
         <thead>
           <tr>
-            <th>כותרת</th>
-            <th>תאריך</th>
-            <th>שעות</th>
-            <th>חפיפה</th>
-            <th>משובצים</th>
-            <th>פעולות</th>
+            <th>כותרת</th><th>תאריך</th><th>שעות</th><th>חפיפה</th><th>משובצים</th><th>פעולות</th>
           </tr>
         </thead>
         <tbody>
-          ${activities.map(act => `
-            <tr>
-              <td class="td-title">${escapeHtml(act.title)}</td>
-              <td>${formatDateShort(act.date)}</td>
-              <td>${act.start_time} – ${act.end_time}</td>
-              <td><span class="badge ${act.allow_overlap ? 'badge-overlap' : 'badge-no-overlap'}">${act.allow_overlap ? 'מותרת' : 'לא מותרת'}</span></td>
-              <td>${act.registrations_count || 0}</td>
-              <td style="display:flex;gap:6px;flex-wrap:wrap">
-                <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px"
-                  onclick="openActivityModal(${act.id})">
-                  👥 שיבוץ
-                </button>
-                <button class="btn btn-danger" style="padding:6px 10px;font-size:12px"
-                  onclick="deleteActivity(${act.id})">מחק</button>
-              </td>
-            </tr>
-          `).join('')}
+          ${activities.map(act => {
+            const names = act.registered_names ? act.registered_names.split(', ') : [];
+            return `
+              <tr>
+                <td class="td-title">${escapeHtml(act.title)}</td>
+                <td>${formatDateShort(act.date)}</td>
+                <td>${act.start_time} – ${act.end_time}</td>
+                <td><span class="badge ${act.allow_overlap ? 'badge-overlap' : 'badge-no-overlap'}">${act.allow_overlap ? 'מותרת' : 'לא מותרת'}</span></td>
+                <td class="td-names">
+                  ${names.length > 0
+                    ? names.map(n => `<span class="name-pill">${escapeHtml(n)}</span>`).join('')
+                    : '<span style="color:var(--text-3);font-size:12px">אין</span>'
+                  }
+                </td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="openActivityModal(${act.id}, ${isPast})">
+                      👥 ${isPast ? 'צפה' : 'שיבוץ'}
+                    </button>
+                    <button class="btn btn-danger" style="padding:6px 10px;font-size:12px" onclick="deleteActivity(${act.id})">מחק</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     `;
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function deleteActivity(id) {
@@ -500,9 +526,7 @@ async function deleteActivity(id) {
     showToast('הפעילות נמחקה בהצלחה');
     loadAdminActivities();
     loadWeeklyView();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function createActivity() {
@@ -517,23 +541,18 @@ async function createActivity() {
     showError('create-act-error', 'נא למלא את כל השדות החובה');
     return;
   }
-
   try {
     await API.post('/activities', { title, date, start_time, end_time, allow_overlap });
     showToast('הפעילות נוצרה בהצלחה! ✅');
     document.getElementById('create-activity-form').classList.add('hidden');
-    ['act-title', 'act-date', 'act-start', 'act-end'].forEach(id =>
-      document.getElementById(id).value = ''
-    );
+    ['act-title','act-date','act-start','act-end'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('act-overlap').checked = false;
     loadAdminActivities();
     loadWeeklyView();
-  } catch (e) {
-    showError('create-act-error', e.message);
-  }
+  } catch (e) { showError('create-act-error', e.message); }
 }
 
-// ===== ADMIN: MANAGE USERS =====
+// ===== ADMIN: MANAGE USERS WITH ATTRIBUTES =====
 async function loadUsers() {
   try {
     const users     = await API.get('/users');
@@ -544,37 +563,88 @@ async function loadUsers() {
       return;
     }
 
-    container.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>שם משתמש</th>
-            <th>תפקיד</th>
-            <th>תאריך הצטרפות</th>
-            <th>פעולות</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${users.map(u => `
-            <tr>
-              <td class="td-title">${escapeHtml(u.username)}</td>
-              <td><span class="badge ${u.is_admin ? 'badge-admin' : 'badge-user'}">${u.is_admin ? 'מנהל' : 'עובד'}</span></td>
-              <td>${new Date(u.created_at).toLocaleDateString('he-IL')}</td>
-              <td>
-                ${!u.is_admin
-                  ? `<button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
-                       onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">מחק</button>`
-                  : '<span style="color:var(--text-3);font-size:12px">—</span>'
-                }
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
-  } catch (e) {
-    showToast(e.message, 'error');
+    container.innerHTML = users.map(u => `
+      <div class="user-card" id="user-card-${u.id}">
+        <div class="user-card-header">
+          <div class="user-card-info">
+            <div class="user-card-avatar">${getInitials(u.username)}</div>
+            <div>
+              <div class="user-card-name">${escapeHtml(u.username)}</div>
+              <span class="badge ${u.is_admin ? 'badge-admin' : 'badge-user'}">${u.is_admin ? 'מנהל' : 'עובד'}</span>
+            </div>
+          </div>
+          ${!u.is_admin
+            ? `<button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
+                 onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">מחק עובד</button>`
+            : ''
+          }
+        </div>
+
+        <!-- Attributes section -->
+        <div class="user-attrs">
+          <div class="attrs-label">תכונות:</div>
+          <div class="attrs-list" id="attrs-list-${u.id}">
+            ${renderAttrPills(u.id, u.attributes)}
+          </div>
+          <div class="attr-add-row">
+            <input type="text" class="attr-input" id="attr-input-${u.id}"
+              placeholder="הוסף תכונה (לדוגמה: רישיון צבאי)..."
+              onkeydown="if(event.key==='Enter') addAttribute(${u.id})" />
+            <button class="btn btn-ghost" style="white-space:nowrap" onclick="addAttribute(${u.id})">
+              + הוסף
+            </button>
+          </div>
+          <div class="error-msg hidden" id="attr-error-${u.id}"></div>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderAttrPills(userId, attributes) {
+  if (!attributes || attributes.length === 0) {
+    return '<span class="no-attrs">אין תכונות עדיין</span>';
   }
+  return attributes.map(a => `
+    <span class="attr-pill">
+      ${escapeHtml(a.attribute)}
+      <button class="attr-remove" onclick="removeAttribute(${userId}, ${a.id})" title="הסר תכונה">×</button>
+    </span>
+  `).join('');
+}
+
+async function addAttribute(userId) {
+  const input = document.getElementById(`attr-input-${userId}`);
+  const value = input.value.trim();
+  hideError(`attr-error-${userId}`);
+
+  if (!value) { showError(`attr-error-${userId}`, 'נא להזין תכונה'); return; }
+
+  try {
+    await API.post(`/users/${userId}/attributes`, { attribute: value });
+    input.value = '';
+    showToast('התכונה נוספה בהצלחה ✅');
+    await refreshUserAttrs(userId);
+  } catch (e) { showError(`attr-error-${userId}`, e.message); }
+}
+
+async function removeAttribute(userId, attrId) {
+  try {
+    await API.delete(`/users/${userId}/attributes/${attrId}`);
+    showToast('התכונה הוסרה');
+    await refreshUserAttrs(userId);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function refreshUserAttrs(userId) {
+  try {
+    const users = await API.get('/users');
+    const user  = users.find(u => u.id === userId);
+    if (user) {
+      document.getElementById(`attrs-list-${userId}`).innerHTML =
+        renderAttrPills(userId, user.attributes);
+    }
+  } catch (e) { console.error(e); }
 }
 
 async function deleteUser(id, username) {
@@ -583,58 +653,42 @@ async function deleteUser(id, username) {
     await API.delete(`/users/${id}`);
     showToast(`המשתמש "${username}" נמחק בהצלחה`);
     loadUsers();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function addUser() {
   const username = document.getElementById('new-username').value.trim();
   hideError('add-user-error');
   if (!username) { showError('add-user-error', 'נא להזין שם משתמש'); return; }
-
   try {
     await API.post('/users', { username });
     showToast(`המשתמש "${username}" נוסף בהצלחה! ✅`);
     document.getElementById('new-username').value = '';
     document.getElementById('add-user-form').classList.add('hidden');
     loadUsers();
-  } catch (e) {
-    showError('add-user-error', e.message);
-  }
+  } catch (e) { showError('add-user-error', e.message); }
 }
 
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', async () => {
+  try { currentUser = await API.get('/auth/me'); initApp(); } catch (_) {}
 
-  // Check if already logged in
-  try {
-    currentUser = await API.get('/auth/me');
-    initApp();
-  } catch (_) { /* not logged in */ }
-
-  // Login
   document.getElementById('login-btn').addEventListener('click', handleLogin);
-  document.getElementById('login-username').addEventListener('keydown', e => {
-    if (e.key === 'Enter') handleLogin();
-  });
-
-  // Logout
+  document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
-  // Nav items
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
       const view = item.dataset.view;
       switchView(view);
-      if (view === 'weekly')             loadWeeklyView();
-      else if (view === 'my-schedule')   loadMySchedule();
-      else if (view === 'manage-activities') loadAdminActivities();
-      else if (view === 'manage-users')  loadUsers();
+      if (view === 'weekly')              { setWeeklyTab(weeklyTab); }
+      else if (view === 'my-schedule')    loadMySchedule();
+      else if (view === 'manage-activities') { setAdminActTab(adminActTab); }
+      else if (view === 'manage-users')   loadUsers();
     });
   });
 
-  // Weekly navigation
+  // Week navigation
   document.getElementById('prev-week').addEventListener('click', () => {
     currentWeekStart.setDate(currentWeekStart.getDate() - 7); loadWeeklyView();
   });
@@ -645,27 +699,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentWeekStart = getWeekStart(new Date()); loadWeeklyView();
   });
 
-  // My schedule navigation
-  document.getElementById('my-prev-week').addEventListener('click', () => {
-    myWeekStart.setDate(myWeekStart.getDate() - 7); loadMySchedule();
-  });
-  document.getElementById('my-next-week').addEventListener('click', () => {
-    myWeekStart.setDate(myWeekStart.getDate() + 7); loadMySchedule();
-  });
-  document.getElementById('my-today-btn').addEventListener('click', () => {
-    myWeekStart = getWeekStart(new Date()); loadMySchedule();
-  });
-
-  // Modal close
+  // Modal
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('activity-modal').addEventListener('click', e => {
     if (e.target === document.getElementById('activity-modal')) closeModal();
   });
-
-  // Admin: assign button
   document.getElementById('assign-user-btn').addEventListener('click', assignUser);
 
-  // Create activity form
+  // Create activity
   document.getElementById('show-create-activity-form').addEventListener('click', () => {
     document.getElementById('create-activity-form').classList.remove('hidden');
     document.getElementById('act-date').value = formatDate(new Date());
@@ -676,7 +717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('create-activity-btn').addEventListener('click', createActivity);
 
-  // Add user form
+  // Add user
   document.getElementById('show-add-user-form').addEventListener('click', () => {
     document.getElementById('add-user-form').classList.remove('hidden');
   });
@@ -685,7 +726,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     hideError('add-user-error');
   });
   document.getElementById('add-user-btn').addEventListener('click', addUser);
-  document.getElementById('new-username').addEventListener('keydown', e => {
-    if (e.key === 'Enter') addUser();
-  });
+  document.getElementById('new-username').addEventListener('keydown', e => { if (e.key === 'Enter') addUser(); });
 });

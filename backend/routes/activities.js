@@ -15,16 +15,27 @@ module.exports = function (db) {
     next();
   }
 
+  function getToday() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   // GET /api/activities
+  // query params: week_start+week_end | period=future|past
   router.get('/', requireAuth, async (req, res) => {
     try {
-      const { week_start, week_end } = req.query;
+      const { week_start, week_end, period } = req.query;
       const userId = req.session.userId;
+      const today  = getToday();
 
       let sql = `
         SELECT a.*,
-          (SELECT COUNT(*) FROM registrations r WHERE r.activity_id = a.id) as registrations_count,
-          (SELECT COUNT(*) FROM registrations r WHERE r.activity_id = a.id AND r.user_id = ?) as user_registered
+          (SELECT COUNT(*) FROM registrations r WHERE r.activity_id = a.id) AS registrations_count,
+          (SELECT COUNT(*) FROM registrations r WHERE r.activity_id = a.id AND r.user_id = ?) AS user_registered,
+          (SELECT GROUP_CONCAT(u.username, ', ')
+            FROM registrations r2
+            JOIN users u ON u.id = r2.user_id
+            WHERE r2.activity_id = a.id) AS registered_names
         FROM activities a
       `;
       const args = [userId];
@@ -32,9 +43,17 @@ module.exports = function (db) {
       if (week_start && week_end) {
         sql += ' WHERE a.date >= ? AND a.date <= ?';
         args.push(week_start, week_end);
+      } else if (period === 'future') {
+        sql += ' WHERE a.date >= ?';
+        args.push(today);
+      } else if (period === 'past') {
+        sql += ' WHERE a.date < ?';
+        args.push(today);
       }
 
-      sql += ' ORDER BY a.date ASC, a.start_time ASC';
+      sql += period === 'past'
+        ? ' ORDER BY a.date DESC, a.start_time DESC'
+        : ' ORDER BY a.date ASC, a.start_time ASC';
 
       const activities = await db.all(sql, args);
       res.json(activities);
@@ -44,7 +63,7 @@ module.exports = function (db) {
     }
   });
 
-  // GET /api/activities/:id — with full registrations list
+  // GET /api/activities/:id — full detail + registrations list
   router.get('/:id', requireAuth, async (req, res) => {
     try {
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [req.params.id]);
@@ -54,6 +73,7 @@ module.exports = function (db) {
         SELECT u.id, u.username FROM registrations r
         JOIN users u ON u.id = r.user_id
         WHERE r.activity_id = ?
+        ORDER BY u.username ASC
       `, [req.params.id]);
 
       res.json({ ...activity, registrations });
@@ -63,14 +83,13 @@ module.exports = function (db) {
     }
   });
 
-  // POST /api/activities
+  // POST /api/activities — create (admin)
   router.post('/', requireAdmin, async (req, res) => {
     try {
       const { title, date, start_time, end_time, allow_overlap } = req.body;
 
       if (!title || !date || !start_time || !end_time)
         return res.status(400).json({ error: 'נא למלא את כל השדות החובה' });
-
       if (start_time >= end_time)
         return res.status(400).json({ error: 'שעת הסיום חייבת להיות אחרי שעת ההתחלה' });
 
@@ -78,18 +97,14 @@ module.exports = function (db) {
         'INSERT INTO activities (title, date, start_time, end_time, allow_overlap) VALUES (?, ?, ?, ?, ?)',
         [title, date, start_time, end_time, allow_overlap ? 1 : 0]
       );
-
-      res.status(201).json({
-        id: result.lastInsertRowid, title, date,
-        start_time, end_time, allow_overlap: allow_overlap ? 1 : 0
-      });
+      res.status(201).json({ id: result.lastInsertRowid, title, date, start_time, end_time, allow_overlap: allow_overlap ? 1 : 0 });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'שגיאת שרת' });
     }
   });
 
-  // DELETE /api/activities/:id
+  // DELETE /api/activities/:id (admin)
   router.delete('/:id', requireAdmin, async (req, res) => {
     try {
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [req.params.id]);

@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<!-- ===== LOGIN SCREEN ===== -->
+<!-- ===== LOGIN ===== -->
 <div id="login-screen" class="screen active">
   <div class="login-bg">
     <div class="login-orb orb-1"></div>
@@ -41,7 +41,6 @@
 <!-- ===== MAIN APP ===== -->
 <div id="app-screen" class="screen">
 
-  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">📋</div>
@@ -50,15 +49,14 @@
         <span class="brand-user" id="sidebar-username"></span>
       </div>
     </div>
-
     <nav class="sidebar-nav">
       <button class="nav-item active" data-view="weekly">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <span>לוח שבועי</span>
       </button>
-      <button class="nav-item" data-view="my-schedule" id="nav-my-schedule">
+      <button class="nav-item" data-view="my-schedule">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>המשמרות שלי</span>
+        <span>הפעילויות שלי</span>
       </button>
       <button class="nav-item admin-only hidden" data-view="manage-activities">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -69,7 +67,6 @@
         <span>ניהול עובדים</span>
       </button>
     </nav>
-
     <div class="sidebar-footer">
       <div class="user-badge">
         <div class="user-avatar" id="user-avatar-initials"></div>
@@ -84,7 +81,6 @@
     </div>
   </aside>
 
-  <!-- Main Content -->
   <main class="main-content">
 
     <!-- ===== WEEKLY VIEW ===== -->
@@ -94,7 +90,7 @@
           <h2 class="view-title">לוח שבועי</h2>
           <p class="view-subtitle" id="week-label"></p>
         </div>
-        <div class="week-controls">
+        <div class="week-controls" id="week-controls">
           <button id="prev-week" class="btn btn-ghost btn-icon">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -104,48 +100,72 @@
           </button>
         </div>
       </div>
-      <div class="week-grid" id="week-grid"></div>
+
+      <!-- Tabs -->
+      <div class="tabs-row">
+        <button class="tab-btn active" id="weekly-tab-future" onclick="setWeeklyTab('future')">
+          📅 פעילויות עתידיות
+        </button>
+        <button class="tab-btn" id="weekly-tab-past" onclick="setWeeklyTab('past')">
+          🕐 פעילויות עבר
+        </button>
+      </div>
+
+      <!-- Future: week grid -->
+      <div id="weekly-future-content">
+        <div class="week-grid" id="week-grid"></div>
+      </div>
+
+      <!-- Past: flat list -->
+      <div id="weekly-past-content" class="hidden">
+        <div id="weekly-past-list" class="activities-list"></div>
+      </div>
     </div>
 
-    <!-- ===== MY SCHEDULE VIEW ===== -->
+    <!-- ===== MY SCHEDULE ===== -->
     <div id="view-my-schedule" class="view">
       <div class="view-header">
         <div class="view-title-group">
-          <h2 class="view-title">המשמרות שלי</h2>
-          <p class="view-subtitle" id="my-week-label"></p>
-        </div>
-        <div class="week-controls">
-          <button id="my-prev-week" class="btn btn-ghost btn-icon">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <button id="my-today-btn" class="btn btn-ghost">היום</button>
-          <button id="my-next-week" class="btn btn-ghost btn-icon">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
+          <h2 class="view-title">הפעילויות שלי</h2>
+          <p class="view-subtitle">הפעילויות שאתה רשום אליהן</p>
         </div>
       </div>
-      <div id="my-activities-list" class="activities-list"></div>
+
+      <div class="tabs-row">
+        <button class="tab-btn active" id="my-tab-future" onclick="setMyTab('future')">
+          📅 עתידיות
+        </button>
+        <button class="tab-btn" id="my-tab-past" onclick="setMyTab('past')">
+          🕐 עבר
+        </button>
+      </div>
+
+      <div id="my-future-content">
+        <div id="my-future-list" class="activities-list"></div>
+      </div>
+      <div id="my-past-content" class="hidden">
+        <div id="my-past-list" class="activities-list"></div>
+      </div>
     </div>
 
-    <!-- ===== MANAGE ACTIVITIES VIEW (admin) ===== -->
+    <!-- ===== MANAGE ACTIVITIES (admin) ===== -->
     <div id="view-manage-activities" class="view">
       <div class="view-header">
         <div class="view-title-group">
           <h2 class="view-title">ניהול פעילויות</h2>
-          <p class="view-subtitle">יצירה, מחיקה ושיבוץ עובדים לפעילויות</p>
+          <p class="view-subtitle">יצירה, מחיקה ושיבוץ עובדים</p>
         </div>
         <button class="btn btn-primary" id="show-create-activity-form">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>פעילות חדשה</span>
+          פעילות חדשה
         </button>
       </div>
 
-      <!-- Create Activity Form -->
       <div id="create-activity-form" class="card form-card hidden">
         <h3 class="card-title">יצירת פעילות חדשה</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label for="act-title">כותרת הפעילות *</label>
+            <label for="act-title">כותרת *</label>
             <input type="text" id="act-title" placeholder="לדוגמה: משמרת בוקר" />
           </div>
           <div class="form-group">
@@ -165,7 +185,7 @@
           <label class="checkbox-label">
             <input type="checkbox" id="act-overlap" />
             <span class="checkbox-custom"></span>
-            <span>אפשר חפיפה — ניתן להתחבר לפעילות זו במקביל לפעילויות אחרות</span>
+            <span>אפשר חפיפה עם פעילויות אחרות</span>
           </label>
         </div>
         <div id="create-act-error" class="error-msg hidden"></div>
@@ -175,32 +195,38 @@
         </div>
       </div>
 
-      <!-- Activities Table -->
+      <div class="tabs-row">
+        <button class="tab-btn active" id="admin-act-tab-future" onclick="setAdminActTab('future')">
+          📅 עתידיות
+        </button>
+        <button class="tab-btn" id="admin-act-tab-past" onclick="setAdminActTab('past')">
+          🕐 עבר
+        </button>
+      </div>
+
       <div class="card">
         <div id="admin-activities-list" class="table-wrapper"></div>
       </div>
     </div>
 
-    <!-- ===== MANAGE USERS VIEW (admin) ===== -->
+    <!-- ===== MANAGE USERS (admin) ===== -->
     <div id="view-manage-users" class="view">
       <div class="view-header">
         <div class="view-title-group">
           <h2 class="view-title">ניהול עובדים</h2>
-          <p class="view-subtitle">הוספה ומחיקה של חשבונות עובדים</p>
+          <p class="view-subtitle">עובדים, הרשאות ותכונות</p>
         </div>
         <button class="btn btn-primary" id="show-add-user-form">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>עובד חדש</span>
+          עובד חדש
         </button>
       </div>
 
       <div id="add-user-form" class="card form-card hidden">
         <h3 class="card-title">הוספת עובד חדש</h3>
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label for="new-username">שם משתמש *</label>
-            <input type="text" id="new-username" placeholder="הזן שם משתמש..." />
-          </div>
+        <div class="form-group">
+          <label for="new-username">שם משתמש *</label>
+          <input type="text" id="new-username" placeholder="הזן שם משתמש..." />
         </div>
         <div id="add-user-error" class="error-msg hidden"></div>
         <div class="form-actions">
@@ -209,15 +235,13 @@
         </div>
       </div>
 
-      <div class="card">
-        <div id="users-list" class="table-wrapper"></div>
-      </div>
+      <div id="users-list"></div>
     </div>
 
   </main>
 </div>
 
-<!-- ===== ACTIVITY DETAIL MODAL ===== -->
+<!-- ===== ACTIVITY MODAL ===== -->
 <div id="activity-modal" class="modal-overlay hidden">
   <div class="modal-card">
     <div class="modal-header">
@@ -225,8 +249,6 @@
       <button id="modal-close" class="btn-icon-close">✕</button>
     </div>
     <div class="modal-body">
-
-      <!-- Info grid -->
       <div class="modal-info-grid">
         <div class="modal-info-item">
           <span class="info-label">תאריך</span>
@@ -245,18 +267,14 @@
           <span class="info-value" id="modal-count"></span>
         </div>
       </div>
-
-      <!-- Registered workers list -->
       <div class="modal-registrations">
         <h4>עובדים משובצים:</h4>
         <div id="modal-registered-list" class="registered-list"></div>
       </div>
-
-      <!-- ===== ADMIN ASSIGNMENT PANEL ===== -->
       <div id="modal-admin-panel" class="admin-panel hidden">
         <div class="admin-panel-header">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-          <span>שיבוץ עובדים</span>
+          שיבוץ עובדים
         </div>
         <div class="assign-row">
           <select id="assign-user-select" class="assign-select">
@@ -269,9 +287,7 @@
         </div>
         <div id="assign-error" class="error-msg hidden" style="margin-top:8px"></div>
       </div>
-
     </div>
-    <!-- Footer: delete activity (admin) OR register/unregister (user) -->
     <div class="modal-footer" id="modal-footer-user">
       <button id="modal-register-btn" class="btn btn-primary btn-full"></button>
     </div>
@@ -284,9 +300,7 @@
   </div>
 </div>
 
-<!-- ===== TOAST ===== -->
 <div id="toast" class="toast hidden"></div>
-
 <script src="js/app.js"></script>
 </body>
 </html>

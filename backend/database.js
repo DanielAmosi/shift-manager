@@ -18,13 +18,12 @@ async function init() {
   }
 
   const isRemote = !url.startsWith('file:');
-
-  if (isRemote && !authToken) {
+  if (isRemote && !authToken)
     throw new Error('DB_AUTH_TOKEN חסר! הגדר אותו ב-Render תחת Environment Variables.');
-  }
 
   const client = createClient(isRemote ? { url, authToken } : { url });
 
+  // ── Create tables ──
   await client.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,13 +35,14 @@ async function init() {
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS activities (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      title         TEXT    NOT NULL,
-      date          TEXT    NOT NULL,
-      start_time    TEXT    NOT NULL,
-      end_time      TEXT    NOT NULL,
-      allow_overlap INTEGER NOT NULL DEFAULT 0,
-      created_at    TEXT    DEFAULT (datetime('now'))
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      title               TEXT    NOT NULL,
+      date                TEXT    NOT NULL,
+      start_time          TEXT    NOT NULL,
+      end_time            TEXT    NOT NULL,
+      allow_overlap       INTEGER NOT NULL DEFAULT 0,
+      lock_unregistration INTEGER NOT NULL DEFAULT 0,
+      created_at          TEXT    DEFAULT (datetime('now'))
     )
   `);
 
@@ -65,7 +65,20 @@ async function init() {
     )
   `);
 
-  // Seed admin
+  // ── Safe migration: add lock_unregistration if it doesn't exist yet ──
+  try {
+    await client.execute(
+      'ALTER TABLE activities ADD COLUMN lock_unregistration INTEGER NOT NULL DEFAULT 0'
+    );
+    console.log('✅ עמודת lock_unregistration נוספה');
+  } catch (e) {
+    // Column already exists — ignore
+    if (!e.message?.includes('duplicate column') && !e.message?.includes('already exists')) {
+      console.warn('ALTER TABLE warning:', e.message);
+    }
+  }
+
+  // ── Seed admin ──
   const adminCheck = await client.execute({
     sql: "SELECT id FROM users WHERE username = 'admin' COLLATE NOCASE", args: []
   });
@@ -78,9 +91,8 @@ async function init() {
   function toObj(row) {
     if (!row) return null;
     const obj = {};
-    for (const [k, v] of Object.entries(row)) {
+    for (const [k, v] of Object.entries(row))
       obj[k] = typeof v === 'bigint' ? Number(v) : v;
-    }
     return obj;
   }
 

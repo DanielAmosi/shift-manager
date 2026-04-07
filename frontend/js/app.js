@@ -220,7 +220,8 @@ function buildActivityChip(act, isPast) {
     </div>
     <div class="chip-tags">
       ${act.user_registered ? '<span class="chip-tag tag-registered">רשום ✓</span>' : ''}
-      ${act.allow_overlap   ? '<span class="chip-tag tag-overlap">חפיפה</span>' : ''}
+      ${act.allow_overlap        ? '<span class="chip-tag tag-overlap">חפיפה</span>' : ''}
+      ${act.lock_unregistration  ? '<span class="chip-tag tag-lock">🔒</span>'       : ''}
     </div>
   `;
   div.addEventListener('click', () => openActivityModal(act.id, isPast));
@@ -257,7 +258,9 @@ function renderActivitiesList(container, activities, isPast, showUnregister = fa
           </div>
         </div>
         ${showUnregister && !isPast
-          ? `<button class="btn btn-ghost" onclick="unregisterActivity(${act.id})">בטל הרשמה</button>`
+          ? act.lock_unregistration
+            ? `<span class="lock-badge">🔒 נעול</span>`
+            : `<button class="btn btn-ghost" onclick="unregisterActivity(${act.id})">בטל הרשמה</button>`
           : ''
         }
       </div>
@@ -321,6 +324,7 @@ async function openActivityModal(activityId, isPast = false) {
     document.getElementById('modal-date').textContent    = formatDateHebrew(act.date);
     document.getElementById('modal-time').textContent    = `${act.start_time} – ${act.end_time}`;
     document.getElementById('modal-overlap').textContent = act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת';
+    document.getElementById('modal-lock').textContent    = act.lock_unregistration ? '🔒 נעול' : '🔓 פתוח';
     document.getElementById('modal-count').textContent   = act.registrations.length + ' עובדים';
 
     renderRegisteredList(act.registrations, activityId);
@@ -347,9 +351,19 @@ async function openActivityModal(activityId, isPast = false) {
         btn.onclick     = null;
       } else {
         btn.disabled  = false;
-        btn.style.opacity = '1';
+        btn.style.opacity  = '1';
+        btn.style.cursor   = 'pointer';
         const isRegistered = act.registrations.some(r => r.id === currentUser.id);
-        if (isRegistered) {
+        const isLocked     = act.lock_unregistration === 1;
+
+        if (isRegistered && isLocked) {
+          btn.className   = 'btn btn-ghost btn-full';
+          btn.textContent = '🔒 לא ניתן לבטל הרשמה לפעילות זו';
+          btn.disabled    = true;
+          btn.style.opacity = '0.6';
+          btn.style.cursor  = 'not-allowed';
+          btn.onclick     = null;
+        } else if (isRegistered) {
           btn.className   = 'btn btn-ghost btn-full';
           btn.textContent = 'בטל הרשמה';
           btn.onclick     = async () => {
@@ -530,23 +544,35 @@ async function deleteActivity(id) {
 }
 
 async function createActivity() {
-  const title        = document.getElementById('act-title').value.trim();
-  const date         = document.getElementById('act-date').value;
-  const start_time   = document.getElementById('act-start').value;
-  const end_time     = document.getElementById('act-end').value;
-  const allow_overlap = document.getElementById('act-overlap').checked;
+  const title          = document.getElementById('act-title').value.trim();
+  const start_date     = document.getElementById('act-start-date').value;
+  const end_date       = document.getElementById('act-end-date').value;
+  const start_time     = document.getElementById('act-start').value;
+  const end_time       = document.getElementById('act-end').value;
+  const allow_overlap      = document.getElementById('act-overlap').checked;
+  const lock_unregistration = document.getElementById('act-lock-unreg').checked;
   hideError('create-act-error');
 
-  if (!title || !date || !start_time || !end_time) {
+  if (!title || !start_date || !start_time || !end_time) {
     showError('create-act-error', 'נא למלא את כל השדות החובה');
     return;
   }
+  if (end_date && end_date < start_date) {
+    showError('create-act-error', 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה');
+    return;
+  }
   try {
-    await API.post('/activities', { title, date, start_time, end_time, allow_overlap });
-    showToast('הפעילות נוצרה בהצלחה! ✅');
+    const res = await API.post('/activities', {
+      title, start_date, end_date: end_date || start_date,
+      start_time, end_time, allow_overlap, lock_unregistration
+    });
+    showToast(res.message + ' ✅');
     document.getElementById('create-activity-form').classList.add('hidden');
-    ['act-title','act-date','act-start','act-end'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('act-overlap').checked = false;
+    ['act-title','act-start-date','act-end-date','act-start','act-end'].forEach(id =>
+      document.getElementById(id).value = ''
+    );
+    document.getElementById('act-overlap').checked   = false;
+    document.getElementById('act-lock-unreg').checked = false;
     loadAdminActivities();
     loadWeeklyView();
   } catch (e) { showError('create-act-error', e.message); }
@@ -709,7 +735,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Create activity
   document.getElementById('show-create-activity-form').addEventListener('click', () => {
     document.getElementById('create-activity-form').classList.remove('hidden');
-    document.getElementById('act-date').value = formatDate(new Date());
+    document.getElementById('act-start-date').value = formatDate(new Date());
+    document.getElementById('act-end-date').value   = '';
   });
   document.getElementById('cancel-create-activity').addEventListener('click', () => {
     document.getElementById('create-activity-form').classList.add('hidden');

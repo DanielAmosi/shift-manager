@@ -1125,3 +1125,30 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 .attr-input::placeholder { color: var(--text-3); }
+
+/* ===== MULTI-DAY FORM + LOCK ===== */
+.checkboxes-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.checkboxes-row .checkbox-label {
+  flex: 1;
+  min-width: 220px;
+}
+
+.tag-lock { background: rgba(248,81,73,0.15); color: var(--danger); }
+
+.lock-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid rgba(248,81,73,0.3);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

@@ -17,7 +17,6 @@ module.exports = function (db) {
   }
 
   // GET /api/registrations/my
-  // query: period=future|past  OR  week_start+week_end
   router.get('/my', requireAuth, async (req, res) => {
     try {
       const { week_start, week_end, period } = req.query;
@@ -65,7 +64,6 @@ module.exports = function (db) {
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [activity_id]);
       if (!activity) return res.status(404).json({ error: 'פעילות לא נמצאה' });
 
-      // Prevent registering to past activities
       const today = getToday();
       if (activity.date < today)
         return res.status(400).json({ error: 'לא ניתן להירשם לפעילות שכבר עברה' });
@@ -75,6 +73,7 @@ module.exports = function (db) {
       );
       if (already) return res.status(409).json({ error: 'כבר רשום לפעילות זו' });
 
+      // Overlap check
       const userActivities = await db.all(`
         SELECT a.* FROM activities a
         JOIN registrations r ON r.activity_id = a.id
@@ -102,8 +101,17 @@ module.exports = function (db) {
   // DELETE /api/registrations/:activity_id — self-unregister
   router.delete('/:activity_id', requireAuth, async (req, res) => {
     try {
-      const userId = req.session.userId;
+      const userId     = req.session.userId;
+      const isAdmin    = req.session.isAdmin;
       const { activity_id } = req.params;
+
+      const activity = await db.get('SELECT * FROM activities WHERE id = ?', [activity_id]);
+      if (!activity) return res.status(404).json({ error: 'פעילות לא נמצאה' });
+
+      // Lock check — only non-admins are blocked
+      if (activity.lock_unregistration === 1 && !isAdmin) {
+        return res.status(403).json({ error: 'לא ניתן לבטל הרשמה לפעילות זו — הביטול נעול על ידי המנהל' });
+      }
 
       const reg = await db.get(
         'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [userId, activity_id]

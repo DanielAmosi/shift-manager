@@ -20,8 +20,22 @@ module.exports = function (db) {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
+  // Generate all dates between start and end (inclusive), YYYY-MM-DD strings
+  function dateRange(startStr, endStr) {
+    const dates = [];
+    const cur = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr   + 'T00:00:00');
+    while (cur <= end) {
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      dates.push(`${y}-${m}-${d}`);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  }
+
   // GET /api/activities
-  // query params: week_start+week_end | period=future|past
   router.get('/', requireAuth, async (req, res) => {
     try {
       const { week_start, week_end, period } = req.query;
@@ -63,7 +77,7 @@ module.exports = function (db) {
     }
   });
 
-  // GET /api/activities/:id — full detail + registrations list
+  // GET /api/activities/:id
   router.get('/:id', requireAuth, async (req, res) => {
     try {
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [req.params.id]);
@@ -83,28 +97,58 @@ module.exports = function (db) {
     }
   });
 
-  // POST /api/activities — create (admin)
+  // POST /api/activities — supports single day or date range
   router.post('/', requireAdmin, async (req, res) => {
     try {
-      const { title, date, start_time, end_time, allow_overlap } = req.body;
+      const { title, start_date, end_date, start_time, end_time, allow_overlap, lock_unregistration } = req.body;
 
-      if (!title || !date || !start_time || !end_time)
+      if (!title || !start_date || !start_time || !end_time)
         return res.status(400).json({ error: 'נא למלא את כל השדות החובה' });
       if (start_time >= end_time)
         return res.status(400).json({ error: 'שעת הסיום חייבת להיות אחרי שעת ההתחלה' });
 
-      const result = await db.run(
-        'INSERT INTO activities (title, date, start_time, end_time, allow_overlap) VALUES (?, ?, ?, ?, ?)',
-        [title, date, start_time, end_time, allow_overlap ? 1 : 0]
-      );
-      res.status(201).json({ id: result.lastInsertRowid, title, date, start_time, end_time, allow_overlap: allow_overlap ? 1 : 0 });
+      const finalEndDate = end_date || start_date;
+
+      if (finalEndDate < start_date)
+        return res.status(400).json({ error: 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה' });
+
+      const dates    = dateRange(start_date, finalEndDate);
+      const overlap  = allow_overlap       ? 1 : 0;
+      const lockUnreg = lock_unregistration ? 1 : 0;
+
+      const created = [];
+      const skipped = [];
+
+      for (const date of dates) {
+        // Skip if exact duplicate (same title + date + start + end) already exists
+        const existing = await db.get(
+          'SELECT id FROM activities WHERE title = ? AND date = ? AND start_time = ? AND end_time = ?',
+          [title, date, start_time, end_time]
+        );
+        if (existing) {
+          skipped.push(date);
+          continue;
+        }
+
+        const result = await db.run(
+          'INSERT INTO activities (title, date, start_time, end_time, allow_overlap, lock_unregistration) VALUES (?, ?, ?, ?, ?, ?)',
+          [title, date, start_time, end_time, overlap, lockUnreg]
+        );
+        created.push({ id: result.lastInsertRowid, date });
+      }
+
+      const msg = created.length === 1
+        ? 'הפעילות נוצרה בהצלחה'
+        : `נוצרו ${created.length} פעילויות${skipped.length ? ` (${skipped.length} כבר קיימות, דולגו)` : ''}`;
+
+      res.status(201).json({ message: msg, created, skipped });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'שגיאת שרת' });
     }
   });
 
-  // DELETE /api/activities/:id (admin)
+  // DELETE /api/activities/:id
   router.delete('/:id', requireAdmin, async (req, res) => {
     try {
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [req.params.id]);

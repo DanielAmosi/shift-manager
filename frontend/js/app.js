@@ -319,80 +319,98 @@ async function openActivityModal(activityId, isPast = false) {
   try {
     const act = await API.get(`/activities/${activityId}`);
     const pastActivity = isPast || isPastDate(act.date);
+    const isLocked     = act.lock_unregistration === 1;
 
-    document.getElementById('modal-title').textContent   = act.title;
-    document.getElementById('modal-date').textContent    = formatDateHebrew(act.date);
-    document.getElementById('modal-time').textContent    = `${act.start_time} – ${act.end_time}`;
-    document.getElementById('modal-overlap').textContent = act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת';
-    document.getElementById('modal-lock').textContent    = act.lock_unregistration ? '🔒 נעול' : '🔓 פתוח';
-    document.getElementById('modal-count').textContent   = act.registrations.length + ' עובדים';
+    // Safe helper — avoids null crashes if element missing
+    function setText(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
+
+    setText('modal-title',   act.title);
+    setText('modal-date',    formatDateHebrew(act.date));
+    setText('modal-time',    `${act.start_time} – ${act.end_time}`);
+    setText('modal-overlap', act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת');
+    setText('modal-count',   act.registrations.length + ' עובדים');
+    setText('modal-lock',    isLocked ? '🔒 נעול — משתמש לא יכול לבטל' : '🔓 פתוח');
 
     renderRegisteredList(act.registrations, activityId);
 
     if (currentUser.isAdmin) {
+      // Admin — show assignment panel, hide user register button
       document.getElementById('modal-admin-panel').classList.remove('hidden');
       document.getElementById('modal-footer-user').classList.add('hidden');
       document.getElementById('modal-footer-admin').classList.remove('hidden');
       await loadAvailableUsers(activityId);
       document.getElementById('modal-delete-btn').onclick = () => deleteActivityFromModal(activityId);
+
     } else {
+      // Regular user
       document.getElementById('modal-admin-panel').classList.add('hidden');
       document.getElementById('modal-footer-admin').classList.add('hidden');
       document.getElementById('modal-footer-user').classList.remove('hidden');
 
-      const btn = document.getElementById('modal-register-btn');
+      const btn          = document.getElementById('modal-register-btn');
+      const isRegistered = act.registrations.some(r => r.id === currentUser.id);
+
+      // Reset button state
+      btn.disabled          = false;
+      btn.style.opacity     = '1';
+      btn.style.cursor      = 'pointer';
+      btn.style.pointerEvents = 'auto';
 
       if (pastActivity) {
-        // Past activity — view only
+        // Past — view only, no action
         btn.className   = 'btn btn-ghost btn-full';
         btn.textContent = '🕐 פעילות זו כבר התקיימה';
         btn.disabled    = true;
         btn.style.opacity = '0.5';
         btn.onclick     = null;
-      } else {
-        btn.disabled  = false;
-        btn.style.opacity  = '1';
-        btn.style.cursor   = 'pointer';
-        const isRegistered = act.registrations.some(r => r.id === currentUser.id);
-        const isLocked     = act.lock_unregistration === 1;
 
-        if (isRegistered && isLocked) {
-          btn.className   = 'btn btn-ghost btn-full';
-          btn.textContent = '🔒 לא ניתן לבטל הרשמה לפעילות זו';
-          btn.disabled    = true;
-          btn.style.opacity = '0.6';
-          btn.style.cursor  = 'not-allowed';
-          btn.onclick     = null;
-        } else if (isRegistered) {
-          btn.className   = 'btn btn-ghost btn-full';
-          btn.textContent = 'בטל הרשמה';
-          btn.onclick     = async () => {
-            try {
-              await API.delete(`/registrations/${activityId}`);
-              closeModal();
-              showToast('הרשמה בוטלה בהצלחה');
-              loadWeeklyView();
-              if (myTab === 'future') loadMyFuture();
-            } catch (e) { showToast(e.message, 'error'); }
-          };
-        } else {
-          btn.className   = 'btn btn-primary btn-full';
-          btn.textContent = 'הרשם לפעילות';
-          btn.onclick     = async () => {
-            try {
-              await API.post('/registrations', { activity_id: activityId });
-              closeModal();
-              showToast('נרשמת לפעילות בהצלחה! ✅');
-              loadWeeklyView();
-              if (myTab === 'future') loadMyFuture();
-            } catch (e) { showToast(e.message, 'error'); }
-          };
-        }
+      } else if (isRegistered && isLocked) {
+        // Registered + locked — cannot self-unregister
+        btn.className        = 'btn btn-ghost btn-full';
+        btn.textContent      = '🔒 לא ניתן לבטל הרשמה לפעילות זו';
+        btn.disabled         = true;
+        btn.style.opacity    = '0.6';
+        btn.style.cursor     = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.onclick          = null;
+
+      } else if (isRegistered) {
+        // Registered, not locked — can unregister
+        btn.className   = 'btn btn-ghost btn-full';
+        btn.textContent = 'בטל הרשמה';
+        btn.onclick     = async () => {
+          try {
+            await API.delete(`/registrations/${activityId}`);
+            closeModal();
+            showToast('הרשמה בוטלה בהצלחה');
+            loadWeeklyView();
+            if (myTab === 'future') loadMyFuture();
+          } catch (e) { showToast(e.message, 'error'); }
+        };
+
+      } else {
+        // Not registered — can register (lock doesn't block registration)
+        btn.className   = 'btn btn-primary btn-full';
+        btn.textContent = 'הרשם לפעילות';
+        btn.onclick     = async () => {
+          try {
+            await API.post('/registrations', { activity_id: activityId });
+            closeModal();
+            showToast('נרשמת לפעילות בהצלחה! ✅');
+            loadWeeklyView();
+            if (myTab === 'future') loadMyFuture();
+          } catch (e) { showToast(e.message, 'error'); }
+        };
       }
     }
 
     document.getElementById('activity-modal').classList.remove('hidden');
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 function renderRegisteredList(registrations, activityId) {
@@ -438,11 +456,14 @@ async function assignUser() {
     const res = await API.post('/assignments', { user_id: parseInt(userId), activity_id: currentActivityId });
     showToast(res.message + ' ✅');
     const act = await API.get(`/activities/${currentActivityId}`);
-    document.getElementById('modal-count').textContent = act.registrations.length + ' עובדים';
+    const countEl = document.getElementById('modal-count');
+    if (countEl) countEl.textContent = act.registrations.length + ' עובדים';
     renderRegisteredList(act.registrations, currentActivityId);
     await loadAvailableUsers(currentActivityId);
     loadWeeklyView();
-    if (adminActTab) loadAdminActivities();
+    if (document.getElementById('view-manage-activities')?.classList.contains('active')) {
+      loadAdminActivities();
+    }
   } catch (e) { showError('assign-error', e.message); }
 }
 
@@ -451,10 +472,14 @@ async function removeAssignment(activityId, userId) {
     const res = await API.delete(`/assignments/${activityId}/${userId}`);
     showToast(res.message);
     const act = await API.get(`/activities/${activityId}`);
-    document.getElementById('modal-count').textContent = act.registrations.length + ' עובדים';
+    const countEl = document.getElementById('modal-count');
+    if (countEl) countEl.textContent = act.registrations.length + ' עובדים';
     renderRegisteredList(act.registrations, activityId);
     await loadAvailableUsers(activityId);
     loadWeeklyView();
+    if (document.getElementById('view-manage-activities')?.classList.contains('active')) {
+      loadAdminActivities();
+    }
   } catch (e) { showToast(e.message, 'error'); }
 }
 

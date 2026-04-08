@@ -331,8 +331,27 @@ async function openActivityModal(activityId, isPast = false) {
     setText('modal-date',    formatDateHebrew(act.date));
     setText('modal-time',    `${act.start_time} – ${act.end_time}`);
     setText('modal-overlap', act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת');
-    setText('modal-count',   act.registrations.length + ' עובדים');
     setText('modal-lock',    isLocked ? '🔒 נעול — משתמש לא יכול לבטל' : '🔓 פתוח');
+
+    // Capacity display
+    const cap     = act.capacity;
+    const regCount = act.registrations.length;
+    const isFull  = cap != null && regCount >= cap;
+    if (cap != null) {
+      setText('modal-count', `${regCount} / ${cap} משתתפים${isFull ? ' — מלא' : ''}`);
+    } else {
+      setText('modal-count', regCount + ' משתתפים');
+    }
+
+    // Notes
+    const notesSection = document.getElementById('modal-notes-section');
+    const notesText    = document.getElementById('modal-notes-text');
+    if (act.notes && act.notes.trim()) {
+      if (notesSection) notesSection.classList.remove('hidden');
+      if (notesText)    notesText.textContent = act.notes;
+    } else {
+      if (notesSection) notesSection.classList.add('hidden');
+    }
 
     renderRegisteredList(act.registrations, activityId);
 
@@ -343,6 +362,7 @@ async function openActivityModal(activityId, isPast = false) {
       document.getElementById('modal-footer-admin').classList.remove('hidden');
       await loadAvailableUsers(activityId);
       document.getElementById('modal-delete-btn').onclick = () => deleteActivityFromModal(activityId);
+      document.getElementById('modal-edit-btn').onclick   = () => openEditModal(act);
 
     } else {
       // Regular user
@@ -360,7 +380,6 @@ async function openActivityModal(activityId, isPast = false) {
       btn.style.pointerEvents = 'auto';
 
       if (pastActivity) {
-        // Past — view only, no action
         btn.className   = 'btn btn-ghost btn-full';
         btn.textContent = '🕐 פעילות זו כבר התקיימה';
         btn.disabled    = true;
@@ -368,7 +387,6 @@ async function openActivityModal(activityId, isPast = false) {
         btn.onclick     = null;
 
       } else if (isRegistered && isLocked) {
-        // Registered + locked — cannot self-unregister
         btn.className        = 'btn btn-ghost btn-full';
         btn.textContent      = '🔒 לא ניתן לבטל הרשמה לפעילות זו';
         btn.disabled         = true;
@@ -378,7 +396,6 @@ async function openActivityModal(activityId, isPast = false) {
         btn.onclick          = null;
 
       } else if (isRegistered) {
-        // Registered, not locked — can unregister
         btn.className   = 'btn btn-ghost btn-full';
         btn.textContent = 'בטל הרשמה';
         btn.onclick     = async () => {
@@ -391,8 +408,16 @@ async function openActivityModal(activityId, isPast = false) {
           } catch (e) { showToast(e.message, 'error'); }
         };
 
+      } else if (isFull) {
+        btn.className        = 'btn btn-ghost btn-full';
+        btn.textContent      = '🈵 הפעילות מלאה';
+        btn.disabled         = true;
+        btn.style.opacity    = '0.6';
+        btn.style.cursor     = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.onclick          = null;
+
       } else {
-        // Not registered — can register (lock doesn't block registration)
         btn.className   = 'btn btn-primary btn-full';
         btn.textContent = 'הרשם לפעילות';
         btn.onclick     = async () => {
@@ -569,13 +594,15 @@ async function deleteActivity(id) {
 }
 
 async function createActivity() {
-  const title          = document.getElementById('act-title').value.trim();
-  const start_date     = document.getElementById('act-start-date').value;
-  const end_date       = document.getElementById('act-end-date').value;
-  const start_time     = document.getElementById('act-start').value;
-  const end_time       = document.getElementById('act-end').value;
-  const allow_overlap      = document.getElementById('act-overlap').checked;
+  const title               = document.getElementById('act-title').value.trim();
+  const start_date          = document.getElementById('act-start-date').value;
+  const end_date            = document.getElementById('act-end-date').value;
+  const start_time          = document.getElementById('act-start').value;
+  const end_time            = document.getElementById('act-end').value;
+  const allow_overlap       = document.getElementById('act-overlap').checked;
   const lock_unregistration = document.getElementById('act-lock-unreg').checked;
+  const capacity            = document.getElementById('act-capacity').value;
+  const notes               = document.getElementById('act-notes').value.trim();
   hideError('create-act-error');
 
   if (!title || !start_date || !start_time || !end_time) {
@@ -589,14 +616,15 @@ async function createActivity() {
   try {
     const res = await API.post('/activities', {
       title, start_date, end_date: end_date || start_date,
-      start_time, end_time, allow_overlap, lock_unregistration
+      start_time, end_time, allow_overlap, lock_unregistration,
+      capacity: capacity || null,
+      notes: notes || null
     });
     showToast(res.message + ' ✅');
     document.getElementById('create-activity-form').classList.add('hidden');
-    ['act-title','act-start-date','act-end-date','act-start','act-end'].forEach(id =>
-      document.getElementById(id).value = ''
-    );
-    document.getElementById('act-overlap').checked   = false;
+    ['act-title','act-start-date','act-end-date','act-start','act-end','act-capacity','act-notes']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('act-overlap').checked    = false;
     document.getElementById('act-lock-unreg').checked = false;
     loadAdminActivities();
     loadWeeklyView();
@@ -720,6 +748,62 @@ async function addUser() {
   } catch (e) { showError('add-user-error', e.message); }
 }
 
+// ===== EDIT MODAL =====
+function openEditModal(act) {
+  // Pre-fill all fields
+  document.getElementById('edit-title').value        = act.title || '';
+  document.getElementById('edit-date').value         = act.date  || '';
+  document.getElementById('edit-start').value        = act.start_time || '';
+  document.getElementById('edit-end').value          = act.end_time   || '';
+  document.getElementById('edit-capacity').value     = act.capacity != null ? act.capacity : '';
+  document.getElementById('edit-notes').value        = act.notes  || '';
+  document.getElementById('edit-overlap').checked    = !!act.allow_overlap;
+  document.getElementById('edit-lock-unreg').checked = !!act.lock_unregistration;
+  hideError('edit-error');
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.add('hidden');
+  hideError('edit-error');
+}
+
+async function saveEditActivity() {
+  const title               = document.getElementById('edit-title').value.trim();
+  const date                = document.getElementById('edit-date').value;
+  const start_time          = document.getElementById('edit-start').value;
+  const end_time            = document.getElementById('edit-end').value;
+  const capacity            = document.getElementById('edit-capacity').value;
+  const notes               = document.getElementById('edit-notes').value.trim();
+  const allow_overlap       = document.getElementById('edit-overlap').checked;
+  const lock_unregistration = document.getElementById('edit-lock-unreg').checked;
+  hideError('edit-error');
+
+  if (!title || !date || !start_time || !end_time) {
+    showError('edit-error', 'נא למלא את כל השדות החובה');
+    return;
+  }
+
+  try {
+    const res = await API.request('PUT', `/activities/${currentActivityId}`, {
+      title, date, start_time, end_time,
+      allow_overlap, lock_unregistration,
+      capacity: capacity !== '' ? parseInt(capacity) : null,
+      notes: notes || null
+    });
+    closeEditModal();
+    // Refresh the activity modal with updated data
+    await openActivityModal(currentActivityId, isPastDate(date));
+    showToast(res.message + ' ✅');
+    loadWeeklyView();
+    if (document.getElementById('view-manage-activities')?.classList.contains('active')) {
+      loadAdminActivities();
+    }
+  } catch (e) {
+    showError('edit-error', e.message);
+  }
+}
+
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', async () => {
   try { currentUser = await API.get('/auth/me'); initApp(); } catch (_) {}
@@ -756,6 +840,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target === document.getElementById('activity-modal')) closeModal();
   });
   document.getElementById('assign-user-btn').addEventListener('click', assignUser);
+
+  // Edit activity modal
+  document.getElementById('edit-modal-close').addEventListener('click', closeEditModal);
+  document.getElementById('edit-cancel-btn').addEventListener('click', closeEditModal);
+  document.getElementById('edit-save-btn').addEventListener('click', saveEditActivity);
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('edit-modal')) closeEditModal();
+  });
 
   // Create activity
   document.getElementById('show-create-activity-form').addEventListener('click', () => {

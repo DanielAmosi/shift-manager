@@ -73,6 +73,19 @@ module.exports = function (db) {
       );
       if (already) return res.status(409).json({ error: 'כבר רשום לפעילות זו' });
 
+      // Capacity check (only for regular users)
+      if (activity.capacity != null) {
+        const countRow = await db.get(
+          'SELECT COUNT(*) as cnt FROM registrations WHERE activity_id = ?', [activity_id]
+        );
+        const currentCount = countRow ? countRow.cnt : 0;
+        if (currentCount >= activity.capacity) {
+          return res.status(400).json({
+            error: `הפעילות מלאה (${activity.capacity}/${activity.capacity} משתתפים)`
+          });
+        }
+      }
+
       // Overlap check
       const userActivities = await db.all(`
         SELECT a.* FROM activities a
@@ -101,14 +114,13 @@ module.exports = function (db) {
   // DELETE /api/registrations/:activity_id — self-unregister
   router.delete('/:activity_id', requireAuth, async (req, res) => {
     try {
-      const userId     = req.session.userId;
-      const isAdmin    = req.session.isAdmin;
+      const userId  = req.session.userId;
+      const isAdmin = req.session.isAdmin;
       const { activity_id } = req.params;
 
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [activity_id]);
       if (!activity) return res.status(404).json({ error: 'פעילות לא נמצאה' });
 
-      // Lock check — only non-admins are blocked
       if (activity.lock_unregistration === 1 && !isAdmin) {
         return res.status(403).json({ error: 'לא ניתן לבטל הרשמה לפעילות זו — הביטול נעול על ידי המנהל' });
       }

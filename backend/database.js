@@ -23,7 +23,6 @@ async function init() {
 
   const client = createClient(isRemote ? { url, authToken } : { url });
 
-  // ── Create tables ──
   await client.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +41,8 @@ async function init() {
       end_time            TEXT    NOT NULL,
       allow_overlap       INTEGER NOT NULL DEFAULT 0,
       lock_unregistration INTEGER NOT NULL DEFAULT 0,
+      capacity            INTEGER,
+      notes               TEXT,
       created_at          TEXT    DEFAULT (datetime('now'))
     )
   `);
@@ -65,20 +66,23 @@ async function init() {
     )
   `);
 
-  // ── Safe migration: add lock_unregistration if it doesn't exist yet ──
-  try {
-    await client.execute(
-      'ALTER TABLE activities ADD COLUMN lock_unregistration INTEGER NOT NULL DEFAULT 0'
-    );
-    console.log('✅ עמודת lock_unregistration נוספה');
-  } catch (e) {
-    // Column already exists — ignore
-    if (!e.message?.includes('duplicate column') && !e.message?.includes('already exists')) {
-      console.warn('ALTER TABLE warning:', e.message);
+  // Safe migrations for existing DBs
+  const migrations = [
+    'ALTER TABLE activities ADD COLUMN lock_unregistration INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE activities ADD COLUMN capacity INTEGER',
+    'ALTER TABLE activities ADD COLUMN notes TEXT',
+  ];
+  for (const sql of migrations) {
+    try {
+      await client.execute(sql);
+    } catch (e) {
+      if (!e.message?.includes('duplicate column') && !e.message?.includes('already exists')) {
+        console.warn('Migration warning:', e.message);
+      }
     }
   }
 
-  // ── Seed admin ──
+  // Seed admin
   const adminCheck = await client.execute({
     sql: "SELECT id FROM users WHERE username = 'admin' COLLATE NOCASE", args: []
   });

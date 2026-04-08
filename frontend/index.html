@@ -197,6 +197,16 @@
             <span>מנע ביטול הרשמה עצמית</span>
           </label>
         </div>
+        <div class="form-grid" style="margin-bottom:0">
+          <div class="form-group">
+            <label for="act-capacity">כמות משתתפים מקסימלית <span style="color:var(--text-3);font-weight:400">(אופציונלי)</span></label>
+            <input type="number" id="act-capacity" placeholder="ללא הגבלה" min="1" />
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label for="act-notes">הערות <span style="color:var(--text-3);font-weight:400">(אופציונלי)</span></label>
+            <textarea id="act-notes" placeholder="הערות לפעילות..." rows="2" class="form-textarea"></textarea>
+          </div>
+        </div>
         <div id="create-act-error" class="error-msg hidden"></div>
         <div class="form-actions">
           <button class="btn btn-primary" id="create-activity-btn">צור פעילות</button>
@@ -284,6 +294,10 @@
         <h4>עובדים משובצים:</h4>
         <div id="modal-registered-list" class="registered-list"></div>
       </div>
+      <div id="modal-notes-section" class="modal-notes hidden">
+        <h4>הערות:</h4>
+        <p id="modal-notes-text"></p>
+      </div>
       <div id="modal-admin-panel" class="admin-panel hidden">
         <div class="admin-panel-header">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
@@ -305,10 +319,71 @@
       <button id="modal-register-btn" class="btn btn-primary btn-full"></button>
     </div>
     <div class="modal-footer modal-footer-admin hidden" id="modal-footer-admin">
+      <button id="modal-edit-btn" class="btn btn-ghost btn-full" style="margin-bottom:8px">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        ערוך פעילות
+      </button>
       <button id="modal-delete-btn" class="btn btn-danger btn-full">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         מחק פעילות
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EDIT ACTIVITY MODAL ===== -->
+<div id="edit-modal" class="modal-overlay hidden">
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-header">
+      <h3 class="modal-title">עריכת פעילות</h3>
+      <button id="edit-modal-close" class="btn-icon-close">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="edit-title">כותרת *</label>
+          <input type="text" id="edit-title" />
+        </div>
+        <div class="form-group">
+          <label for="edit-date">תאריך *</label>
+          <input type="date" id="edit-date" />
+        </div>
+        <div class="form-group">
+          <label for="edit-capacity">כמות משתתפים מקס׳</label>
+          <input type="number" id="edit-capacity" placeholder="ללא הגבלה" min="1" />
+        </div>
+        <div class="form-group">
+          <label for="edit-start">שעת התחלה *</label>
+          <input type="time" id="edit-start" />
+        </div>
+        <div class="form-group">
+          <label for="edit-end">שעת סיום *</label>
+          <input type="time" id="edit-end" />
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="edit-notes">הערות</label>
+          <textarea id="edit-notes" rows="2" class="form-textarea" placeholder="הערות לפעילות..."></textarea>
+        </div>
+      </div>
+      <div class="checkboxes-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="edit-overlap" />
+          <span class="checkbox-custom"></span>
+          <span>אפשר חפיפה</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="edit-lock-unreg" />
+          <span class="checkbox-custom"></span>
+          <span>מנע ביטול הרשמה</span>
+        </label>
+      </div>
+      <div id="edit-error" class="error-msg hidden"></div>
+    </div>
+    <div class="modal-footer">
+      <div style="display:flex;gap:10px">
+        <button id="edit-save-btn" class="btn btn-primary" style="flex:1">שמור שינויים</button>
+        <button id="edit-cancel-btn" class="btn btn-ghost" style="flex:1">ביטול</button>
+      </div>
     </div>
   </div>
 </div>

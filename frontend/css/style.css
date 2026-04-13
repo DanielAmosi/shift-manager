@@ -149,7 +149,7 @@ input:focus {
 
 input::placeholder { color: var(--text-3); }
 
-/* Fix browser autofill overriding dark theme */
+/* מניעת דריסת עיצוב dark theme ע"י autofill של הדפדפן */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {

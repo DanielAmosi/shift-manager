@@ -1,70 +1,76 @@
 /* ============================================================
-   SHIFT MANAGER — Frontend Application
+   SHIFT MANAGER — Frontend Application v3
    ============================================================ */
 
 const API = {
   async request(method, path, body) {
-    const opts = {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin'
-    };
+    const opts = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' };
     if (body !== undefined) opts.body = JSON.stringify(body);
-    const res = await fetch('/api' + path, opts);
+    const res  = await fetch('/api' + path, opts);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'שגיאה בשרת');
     return data;
   },
-  get: (path) => API.request('GET', path),
-  post: (path, body) => API.request('POST', path, body),
-  delete: (path) => API.request('DELETE', path)
+  get:    p      => API.request('GET',    p),
+  post:   (p, b) => API.request('POST',   p, b),
+  delete: p      => API.request('DELETE', p)
 };
 
 // ===== STATE =====
-let currentUser = null;
+let currentUser      = null;
 let currentWeekStart = getWeekStart(new Date());
-let myWeekStart = getWeekStart(new Date());
+let weeklyTab        = 'future';   // 'future' | 'past'
+let myTab            = 'future';
+let adminActTab      = 'future';
 
 // ===== UTILS =====
 function getWeekStart(date) {
   const d = new Date(date);
-  const day = d.getDay(); // 0=Sun, 6=Sat
-  // Week starts on Sunday in Israel
-  d.setDate(d.getDate() - day);
+  d.setDate(d.getDate() - d.getDay());
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
 function formatDate(date) {
   const d = new Date(date);
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 function formatDateHebrew(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' });
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
 }
 
 function formatDateShort(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
 }
 
-function getWeekEnd(weekStart) {
-  const d = new Date(weekStart);
+function getWeekEnd(ws) {
+  const d = new Date(ws);
   d.setDate(d.getDate() + 6);
   return d;
 }
 
-function formatWeekLabel(weekStart) {
-  const end = getWeekEnd(weekStart);
+function formatWeekLabel(ws) {
+  const end = getWeekEnd(ws);
   const opts = { day: 'numeric', month: 'long' };
-  return `${weekStart.toLocaleDateString('he-IL', opts)} – ${end.toLocaleDateString('he-IL', opts)}`;
+  return `${ws.toLocaleDateString('he-IL', opts)} – ${end.toLocaleDateString('he-IL', opts)}`;
 }
 
-function isToday(dateStr) {
-  return dateStr === formatDate(new Date());
+function todayStr() { return formatDate(new Date()); }
+
+function isPastDate(dateStr) { return dateStr < todayStr(); }
+
+function isToday(dateStr) { return dateStr === todayStr(); }
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(str || '')));
+  return d.innerHTML;
 }
+
+function getInitials(name) { return name ? name.charAt(0).toUpperCase() : '?'; }
 
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
@@ -72,7 +78,7 @@ function showToast(msg, type = 'success') {
   t.className = `toast ${type}`;
   t.classList.remove('hidden');
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.add('hidden'), 3000);
+  t._timer = setTimeout(() => t.classList.add('hidden'), 3500);
 }
 
 function showError(id, msg) {
@@ -85,22 +91,14 @@ function hideError(id) {
   if (el) el.classList.add('hidden');
 }
 
-function getInitials(name) {
-  return name ? name.charAt(0).toUpperCase() : '?';
-}
-
 const DAYS_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
 // ===== NAVIGATION =====
 function switchView(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-
-  const view = document.getElementById('view-' + viewId);
-  if (view) view.classList.add('active');
-
-  const navItem = document.querySelector(`.nav-item[data-view="${viewId}"]`);
-  if (navItem) navItem.classList.add('active');
+  document.getElementById('view-' + viewId)?.classList.add('active');
+  document.querySelector(`.nav-item[data-view="${viewId}"]`)?.classList.add('active');
 }
 
 // ===== LOGIN =====
@@ -108,41 +106,28 @@ async function handleLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
   hideError('login-error');
-
   if (!username) { showError('login-error', 'נא להזין שם משתמש'); return; }
   if (!password) { showError('login-error', 'נא להזין סיסמה'); return; }
-
   try {
-    const user = await API.post('/auth/login', { username, password });
-    currentUser = user;
+    currentUser = await API.post('/auth/login', { username, password });
     initApp();
-  } catch (e) {
-    showError('login-error', e.message);
-  }
+  } catch (e) { showError('login-error', e.message); }
 }
 
-// ===== INIT APP =====
 function initApp() {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('app-screen').classList.add('active');
-
-  // Sidebar user info
-  document.getElementById('sidebar-username').textContent = currentUser.isAdmin ? 'מנהל' : 'עובד';
-  document.getElementById('user-display-name').textContent = currentUser.username;
-  document.getElementById('user-role-label').textContent = currentUser.isAdmin ? 'מנהל מערכת' : 'עובד';
+  document.getElementById('sidebar-username').textContent     = currentUser.isAdmin ? 'מנהל' : 'עובד';
+  document.getElementById('user-display-name').textContent    = currentUser.username;
+  document.getElementById('user-role-label').textContent      = currentUser.isAdmin ? 'מנהל מערכת' : 'עובד';
   document.getElementById('user-avatar-initials').textContent = getInitials(currentUser.username);
-
-  // Admin-only nav items
-  document.querySelectorAll('.admin-only').forEach(el => {
-    el.classList.toggle('hidden', !currentUser.isAdmin);
-  });
-
-  // Switch to weekly view
+  document.querySelectorAll('.admin-only').forEach(el =>
+    el.classList.toggle('hidden', !currentUser.isAdmin)
+  );
   switchView('weekly');
-  loadWeeklyView();
+  setWeeklyTab('future');
 }
 
-// ===== LOGOUT =====
 async function handleLogout() {
   await API.post('/auth/logout');
   currentUser = null;
@@ -153,17 +138,31 @@ async function handleLogout() {
   hideError('login-error');
 }
 
-// ===== WEEKLY VIEW =====
+// ===== WEEKLY VIEW TABS =====
+function setWeeklyTab(tab) {
+  weeklyTab = tab;
+  document.getElementById('weekly-tab-future').classList.toggle('active', tab === 'future');
+  document.getElementById('weekly-tab-past').classList.toggle('active', tab === 'past');
+  document.getElementById('weekly-future-content').classList.toggle('hidden', tab !== 'future');
+  document.getElementById('weekly-past-content').classList.toggle('hidden', tab !== 'past');
+  document.getElementById('week-controls').classList.toggle('hidden', tab !== 'future');
+
+  if (tab === 'future') loadWeeklyView();
+  else loadWeeklyPast();
+}
+
+// ===== WEEKLY FUTURE — calendar grid =====
 async function loadWeeklyView() {
   const weekEnd = getWeekEnd(currentWeekStart);
   document.getElementById('week-label').textContent = formatWeekLabel(currentWeekStart);
 
   let activities = [];
   try {
-    activities = await API.get(`/activities?week_start=${formatDate(currentWeekStart)}&week_end=${formatDate(weekEnd)}`);
+    activities = await API.get(
+      `/activities?week_start=${formatDate(currentWeekStart)}&week_end=${formatDate(weekEnd)}`
+    );
   } catch (e) { showToast(e.message, 'error'); }
 
-  // Build 7-day grid
   const grid = document.getElementById('week-grid');
   grid.innerHTML = '';
 
@@ -171,7 +170,7 @@ async function loadWeeklyView() {
     const day = new Date(currentWeekStart);
     day.setDate(day.getDate() + i);
     const dayStr = formatDate(day);
-    const dayActivities = activities.filter(a => a.date === dayStr);
+    const dayActs = activities.filter(a => a.date === dayStr);
 
     const col = document.createElement('div');
     col.className = 'day-column' + (isToday(dayStr) ? ' today' : '');
@@ -185,95 +184,255 @@ async function loadWeeklyView() {
     grid.appendChild(col);
 
     const dayEl = document.getElementById('day-' + dayStr);
-    if (dayActivities.length === 0) {
+    if (dayActs.length === 0) {
       dayEl.innerHTML = '<div class="empty-day">אין פעילויות</div>';
     } else {
-      dayActivities.forEach(act => {
-        const chip = buildActivityChip(act);
-        dayEl.appendChild(chip);
-      });
+      dayActs.forEach(act => dayEl.appendChild(buildActivityChip(act, false)));
     }
   }
 }
 
-function buildActivityChip(act) {
+// ===== WEEKLY PAST — flat list =====
+async function loadWeeklyPast() {
+  const container = document.getElementById('weekly-past-list');
+  container.innerHTML = '<div class="loading-msg">טוען...</div>';
+  try {
+    const activities = await API.get('/activities?period=past');
+    renderActivitiesList(container, activities, true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ===== CHIP (calendar) =====
+function buildActivityChip(act, isPast) {
+  const names = act.registered_names
+    ? act.registered_names.split(', ').slice(0, 3)
+    : [];
+  const extra = (act.registrations_count || 0) - names.length;
+
   const div = document.createElement('div');
-  div.className = 'activity-chip' + (act.user_registered ? ' registered' : '');
+  div.className = 'activity-chip' + (act.user_registered ? ' registered' : '') + (isPast ? ' past' : '');
   div.innerHTML = `
     <div class="chip-title">${escapeHtml(act.title)}</div>
     <div class="chip-time">${act.start_time}–${act.end_time}</div>
+    <div class="chip-names">
+      ${names.length > 0
+        ? names.map(n => `<span class="chip-name">${escapeHtml(n)}</span>`).join('') +
+          (extra > 0 ? `<span class="chip-name chip-name-more">+${extra}</span>` : '')
+        : '<span class="chip-name chip-name-empty">אין רשומים</span>'
+      }
+    </div>
     <div class="chip-tags">
       ${act.user_registered ? '<span class="chip-tag tag-registered">רשום ✓</span>' : ''}
-      ${act.allow_overlap ? '<span class="chip-tag tag-overlap">חפיפה מותרת</span>' : ''}
-      <span class="chip-tag tag-registered-count">${act.registrations_count || 0} רשומים</span>
+      ${act.allow_overlap        ? '<span class="chip-tag tag-overlap">חפיפה</span>' : ''}
+      ${act.lock_unregistration  ? '<span class="chip-tag tag-lock">🔒</span>'       : ''}
     </div>
   `;
-  div.addEventListener('click', () => openActivityModal(act.id));
+  div.addEventListener('click', () => openActivityModal(act.id, isPast));
   return div;
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.appendChild(document.createTextNode(str));
-  return div.innerHTML;
+// ===== FLAT ACTIVITY ROW (lists) =====
+function renderActivitiesList(container, activities, isPast, showUnregister = false) {
+  if (activities.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">${isPast ? '🕐' : '📅'}</div>
+        <p>${isPast ? 'אין פעילויות עבר' : 'אין פעילויות עתידיות'}</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = activities.map(act => {
+    const names = act.registered_names ? act.registered_names.split(', ') : [];
+    return `
+      <div class="activity-row ${isPast ? 'past' : ''}">
+        <div class="act-info" style="cursor:pointer" onclick="openActivityModal(${act.id}, ${isPast})">
+          <div class="act-title">${escapeHtml(act.title)}</div>
+          <div class="act-meta">
+            <span>📅 ${formatDateHebrew(act.date)}</span>
+            <span>🕐 ${act.start_time} – ${act.end_time}</span>
+            ${act.allow_overlap ? '<span>🔀 חפיפה מותרת</span>' : ''}
+          </div>
+          <div class="act-registered-names">
+            ${names.length > 0
+              ? names.map(n => `<span class="name-pill">${escapeHtml(n)}</span>`).join('')
+              : '<span style="font-size:12px;color:var(--text-3)">אין רשומים</span>'
+            }
+          </div>
+        </div>
+        ${showUnregister && !isPast
+          ? act.lock_unregistration
+            ? `<span class="lock-badge">🔒 נעול</span>`
+            : `<button class="btn btn-ghost" onclick="unregisterActivity(${act.id})">בטל הרשמה</button>`
+          : ''
+        }
+      </div>
+    `;
+  }).join('');
+}
+
+// ===== MY SCHEDULE TABS =====
+function setMyTab(tab) {
+  myTab = tab;
+  document.getElementById('my-tab-future').classList.toggle('active', tab === 'future');
+  document.getElementById('my-tab-past').classList.toggle('active', tab === 'past');
+  document.getElementById('my-future-content').classList.toggle('hidden', tab !== 'future');
+  document.getElementById('my-past-content').classList.toggle('hidden', tab !== 'past');
+  if (tab === 'future') loadMyFuture();
+  else loadMyPast();
+}
+
+async function loadMySchedule() { setMyTab(myTab); }
+
+async function loadMyFuture() {
+  const container = document.getElementById('my-future-list');
+  container.innerHTML = '<div class="loading-msg">טוען...</div>';
+  try {
+    const activities = await API.get('/registrations/my?period=future');
+    renderActivitiesList(container, activities, false, true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadMyPast() {
+  const container = document.getElementById('my-past-list');
+  container.innerHTML = '<div class="loading-msg">טוען...</div>';
+  try {
+    const activities = await API.get('/registrations/my?period=past');
+    renderActivitiesList(container, activities, true, false);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function unregisterActivity(actId) {
+  if (!confirm('לבטל הרשמה לפעילות זו?')) return;
+  try {
+    await API.delete(`/registrations/${actId}`);
+    showToast('הרשמה בוטלה בהצלחה');
+    loadMyFuture();
+    loadWeeklyView();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ===== ACTIVITY MODAL =====
 let currentActivityId = null;
 
-async function openActivityModal(activityId) {
+async function openActivityModal(activityId, isPast = false) {
   currentActivityId = activityId;
+  hideError('assign-error');
+
   try {
     const act = await API.get(`/activities/${activityId}`);
-    document.getElementById('modal-title').textContent = act.title;
-    document.getElementById('modal-date').textContent = formatDateHebrew(act.date);
-    document.getElementById('modal-time').textContent = `${act.start_time} – ${act.end_time}`;
-    document.getElementById('modal-overlap').textContent = act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת';
-    document.getElementById('modal-count').textContent = act.registrations.length + ' עובדים';
+    const pastActivity = isPast || isPastDate(act.date);
+    const isLocked     = act.lock_unregistration === 1;
 
-    const list = document.getElementById('modal-registered-list');
-    list.innerHTML = act.registrations.length === 0
-      ? '<span style="color:var(--text-3);font-size:13px">אין רשומים עדיין</span>'
-      : act.registrations.map(r => `<span class="registered-pill">${escapeHtml(r.username)}</span>`).join('');
+    // Safe helper — avoids null crashes if element missing
+    function setText(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
 
-    const isRegistered = act.registrations.some(r => r.id === currentUser.id);
-    const btn = document.getElementById('modal-register-btn');
+    setText('modal-title',   act.title);
+    setText('modal-date',    formatDateHebrew(act.date));
+    setText('modal-time',    `${act.start_time} – ${act.end_time}`);
+    setText('modal-overlap', act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת');
+    setText('modal-lock',    isLocked ? '🔒 נעול — משתמש לא יכול לבטל' : '🔓 פתוח');
+
+    // Capacity display
+    const cap     = act.capacity;
+    const regCount = act.registrations.length;
+    const isFull  = cap != null && regCount >= cap;
+    if (cap != null) {
+      setText('modal-count', `${regCount} / ${cap} משתתפים${isFull ? ' — מלא' : ''}`);
+    } else {
+      setText('modal-count', regCount + ' משתתפים');
+    }
+
+    // Notes
+    const notesSection = document.getElementById('modal-notes-section');
+    const notesText    = document.getElementById('modal-notes-text');
+    if (act.notes && act.notes.trim()) {
+      if (notesSection) notesSection.classList.remove('hidden');
+      if (notesText)    notesText.textContent = act.notes;
+    } else {
+      if (notesSection) notesSection.classList.add('hidden');
+    }
+
+    renderRegisteredList(act.registrations, activityId);
 
     if (currentUser.isAdmin) {
-      btn.className = 'btn btn-danger btn-full';
-      btn.textContent = 'מחק פעילות';
-      btn.onclick = async () => {
-        if (!confirm('למחוק את הפעילות?')) return;
-        try {
-          await API.delete(`/activities/${activityId}`);
-          closeModal();
-          showToast('הפעילות נמחקה בהצלחה');
-          loadWeeklyView();
-          loadAdminActivities();
-        } catch (e) { showToast(e.message, 'error'); }
-      };
-    } else if (isRegistered) {
-      btn.className = 'btn btn-ghost btn-full';
-      btn.textContent = 'בטל הרשמה';
-      btn.onclick = async () => {
-        try {
-          await API.delete(`/registrations/${activityId}`);
-          closeModal();
-          showToast('הרשמה בוטלה בהצלחה');
-          loadWeeklyView();
-        } catch (e) { showToast(e.message, 'error'); }
-      };
+      // Admin — show assignment panel, hide user register button
+      document.getElementById('modal-admin-panel').classList.remove('hidden');
+      document.getElementById('modal-footer-user').classList.add('hidden');
+      document.getElementById('modal-footer-admin').classList.remove('hidden');
+      await loadAvailableUsers(activityId);
+      document.getElementById('modal-delete-btn').onclick = () => deleteActivityFromModal(activityId);
+      document.getElementById('modal-edit-btn').onclick   = () => openEditModal(act);
+
     } else {
-      btn.className = 'btn btn-primary btn-full';
-      btn.textContent = 'הרשם לפעילות';
-      btn.onclick = async () => {
-        try {
-          await API.post('/registrations', { activity_id: activityId });
-          closeModal();
-          showToast('נרשמת לפעילות בהצלחה! ✅');
-          loadWeeklyView();
-        } catch (e) { showToast(e.message, 'error'); }
-      };
+      // Regular user
+      document.getElementById('modal-admin-panel').classList.add('hidden');
+      document.getElementById('modal-footer-admin').classList.add('hidden');
+      document.getElementById('modal-footer-user').classList.remove('hidden');
+
+      const btn          = document.getElementById('modal-register-btn');
+      const isRegistered = act.registrations.some(r => r.id === currentUser.id);
+
+      // Reset button state
+      btn.disabled          = false;
+      btn.style.opacity     = '1';
+      btn.style.cursor      = 'pointer';
+      btn.style.pointerEvents = 'auto';
+
+      if (pastActivity) {
+        btn.className   = 'btn btn-ghost btn-full';
+        btn.textContent = '🕐 פעילות זו כבר התקיימה';
+        btn.disabled    = true;
+        btn.style.opacity = '0.5';
+        btn.onclick     = null;
+
+      } else if (isRegistered && isLocked) {
+        btn.className        = 'btn btn-ghost btn-full';
+        btn.textContent      = '🔒 לא ניתן לבטל הרשמה לפעילות זו';
+        btn.disabled         = true;
+        btn.style.opacity    = '0.6';
+        btn.style.cursor     = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.onclick          = null;
+
+      } else if (isRegistered) {
+        btn.className   = 'btn btn-ghost btn-full';
+        btn.textContent = 'בטל הרשמה';
+        btn.onclick     = async () => {
+          try {
+            await API.delete(`/registrations/${activityId}`);
+            closeModal();
+            showToast('הרשמה בוטלה בהצלחה');
+            loadWeeklyView();
+            if (myTab === 'future') loadMyFuture();
+          } catch (e) { showToast(e.message, 'error'); }
+        };
+
+      } else if (isFull) {
+        btn.className        = 'btn btn-ghost btn-full';
+        btn.textContent      = '🈵 הפעילות מלאה';
+        btn.disabled         = true;
+        btn.style.opacity    = '0.6';
+        btn.style.cursor     = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.onclick          = null;
+
+      } else {
+        btn.className   = 'btn btn-primary btn-full';
+        btn.textContent = 'הרשם לפעילות';
+        btn.onclick     = async () => {
+          try {
+            await API.post('/registrations', { activity_id: activityId });
+            closeModal();
+            showToast('נרשמת לפעילות בהצלחה! ✅');
+            loadWeeklyView();
+            if (myTab === 'future') loadMyFuture();
+          } catch (e) { showToast(e.message, 'error'); }
+        };
+      }
     }
 
     document.getElementById('activity-modal').classList.remove('hidden');
@@ -282,67 +441,148 @@ async function openActivityModal(activityId) {
   }
 }
 
-function closeModal() {
-  document.getElementById('activity-modal').classList.add('hidden');
-  currentActivityId = null;
+function renderRegisteredList(registrations, activityId) {
+  const list = document.getElementById('modal-registered-list');
+  if (registrations.length === 0) {
+    list.innerHTML = '<span style="color:var(--text-3);font-size:13px">אין עובדים משובצים עדיין</span>';
+    return;
+  }
+  if (currentUser.isAdmin) {
+    list.innerHTML = registrations.map(r => `
+      <div class="assigned-row">
+        <span class="registered-pill">${escapeHtml(r.username)}</span>
+        <button class="btn-remove-assigned" onclick="removeAssignment(${activityId}, ${r.id})">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    `).join('');
+  } else {
+    list.innerHTML = registrations.map(r =>
+      `<span class="registered-pill">${escapeHtml(r.username)}</span>`
+    ).join('');
+  }
 }
 
-// ===== MY SCHEDULE VIEW =====
-async function loadMySchedule() {
-  const weekEnd = getWeekEnd(myWeekStart);
-  document.getElementById('my-week-label').textContent = formatWeekLabel(myWeekStart);
+// Availability helpers
+const AVAIL_LABEL  = { AVAILABLE: 'זמין', UNAVAILABLE: 'לא זמין', LIMITED: 'מוגבל' };
+const AVAIL_EMOJI  = { AVAILABLE: '🟢',   UNAVAILABLE: '🔴',        LIMITED: '🟠' };
+const AVAIL_OPTS   = [
+  { value: 'AVAILABLE',   label: 'זמין 🟢'   },
+  { value: 'LIMITED',     label: 'מוגבל 🟠'  },
+  { value: 'UNAVAILABLE', label: 'לא זמין 🔴' },
+];
+const DAY_NAMES_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
+async function loadAvailableUsers(activityId) {
   try {
-    const activities = await API.get(`/registrations/my?week_start=${formatDate(myWeekStart)}&week_end=${formatDate(weekEnd)}`);
-    const list = document.getElementById('my-activities-list');
+    const users = await API.get(`/assignments/available/${activityId}`);
+    const sel   = document.getElementById('assign-user-select');
 
-    if (activities.length === 0) {
-      list.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📅</div>
-          <p>לא נרשמת לפעילויות בשבוע זה</p>
-        </div>`;
+    if (users.length === 0) {
+      sel.innerHTML = '<option value="">— כל העובדים כבר משובצים —</option>';
+
+      // Clear visual list too
+      const listEl = document.getElementById('assign-user-list');
+      if (listEl) listEl.innerHTML = '';
       return;
     }
 
-    list.innerHTML = activities.map(act => `
-      <div class="activity-row">
-        <div class="act-info">
-          <div class="act-title">${escapeHtml(act.title)}</div>
-          <div class="act-meta">
-            <span>📅 ${formatDateHebrew(act.date)}</span>
-            <span>🕐 ${act.start_time} – ${act.end_time}</span>
-            ${act.allow_overlap ? '<span>🔀 חפיפה מותרת</span>' : ''}
+    // Populate <select> with status in option text
+    sel.innerHTML = '<option value="">— בחר עובד לשיבוץ —</option>' +
+      users.map(u => {
+        const emoji = AVAIL_EMOJI[u.availability_status] || '';
+        return `<option value="${u.id}">${escapeHtml(u.username)} ${emoji}</option>`;
+      }).join('');
+
+    // Render visual list below the select for richer display
+    const listEl = document.getElementById('assign-user-list');
+    if (listEl) {
+      listEl.innerHTML = users.map(u => {
+        const status = u.availability_status || 'AVAILABLE';
+        return `
+          <div class="avail-user-row avail-${status.toLowerCase()}"
+               onclick="document.getElementById('assign-user-select').value='${u.id}'">
+            <span class="avail-name">${escapeHtml(u.username)}</span>
+            <span class="avail-badge avail-badge-${status.toLowerCase()}">
+              ${AVAIL_EMOJI[status]} ${AVAIL_LABEL[status]}
+            </span>
           </div>
-        </div>
-        <button class="btn btn-ghost" onclick="unregisterFromMySchedule(${act.id})">בטל הרשמה</button>
-      </div>
-    `).join('');
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+        `;
+      }).join('');
+    }
+  } catch (e) { console.error(e); }
 }
 
-async function unregisterFromMySchedule(actId) {
-  if (!confirm('לבטל הרשמה לפעילות זו?')) return;
+async function assignUser() {
+  const userId = document.getElementById('assign-user-select').value;
+  hideError('assign-error');
+  if (!userId) { showError('assign-error', 'נא לבחור עובד מהרשימה'); return; }
   try {
-    await API.delete(`/registrations/${actId}`);
-    showToast('הרשמה בוטלה בהצלחה');
-    loadMySchedule();
+    const res = await API.post('/assignments', { user_id: parseInt(userId), activity_id: currentActivityId });
+    showToast(res.message + ' ✅');
+    const act = await API.get(`/activities/${currentActivityId}`);
+    const countEl = document.getElementById('modal-count');
+    if (countEl) countEl.textContent = act.registrations.length + ' עובדים';
+    renderRegisteredList(act.registrations, currentActivityId);
+    await loadAvailableUsers(currentActivityId);
     loadWeeklyView();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+    if (document.getElementById('view-manage-activities')?.classList.contains('active')) {
+      loadAdminActivities();
+    }
+  } catch (e) { showError('assign-error', e.message); }
 }
 
-// ===== ADMIN: MANAGE ACTIVITIES =====
+async function removeAssignment(activityId, userId) {
+  try {
+    const res = await API.delete(`/assignments/${activityId}/${userId}`);
+    showToast(res.message);
+    const act = await API.get(`/activities/${activityId}`);
+    const countEl = document.getElementById('modal-count');
+    if (countEl) countEl.textContent = act.registrations.length + ' עובדים';
+    renderRegisteredList(act.registrations, activityId);
+    await loadAvailableUsers(activityId);
+    loadWeeklyView();
+    if (document.getElementById('view-manage-activities')?.classList.contains('active')) {
+      loadAdminActivities();
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteActivityFromModal(activityId) {
+  if (!confirm('למחוק את הפעילות לצמיתות?')) return;
+  try {
+    await API.delete(`/activities/${activityId}`);
+    closeModal();
+    showToast('הפעילות נמחקה בהצלחה');
+    loadWeeklyView();
+    loadAdminActivities();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function closeModal() {
+  document.getElementById('activity-modal').classList.add('hidden');
+  currentActivityId = null;
+  hideError('assign-error');
+}
+
+// ===== ADMIN: MANAGE ACTIVITIES TABS =====
+function setAdminActTab(tab) {
+  adminActTab = tab;
+  document.getElementById('admin-act-tab-future').classList.toggle('active', tab === 'future');
+  document.getElementById('admin-act-tab-past').classList.toggle('active', tab === 'past');
+  loadAdminActivities();
+}
+
 async function loadAdminActivities() {
   try {
-    const activities = await API.get('/activities');
-    const container = document.getElementById('admin-activities-list');
+    const activities = await API.get(`/activities?period=${adminActTab}`);
+    const container  = document.getElementById('admin-activities-list');
+    const isPast     = adminActTab === 'past';
 
     if (activities.length === 0) {
-      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>אין פעילויות במערכת</p></div>`;
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>אין פעילויות ${isPast ? 'עבר' : 'עתידיות'}</p></div>`;
       return;
     }
 
@@ -350,33 +590,39 @@ async function loadAdminActivities() {
       <table>
         <thead>
           <tr>
-            <th>כותרת</th>
-            <th>תאריך</th>
-            <th>שעות</th>
-            <th>חפיפה</th>
-            <th>רשומים</th>
-            <th>פעולות</th>
+            <th>כותרת</th><th>תאריך</th><th>שעות</th><th>חפיפה</th><th>משובצים</th><th>פעולות</th>
           </tr>
         </thead>
         <tbody>
-          ${activities.map(act => `
-            <tr>
-              <td class="td-title">${escapeHtml(act.title)}</td>
-              <td>${formatDateShort(act.date)}</td>
-              <td>${act.start_time} – ${act.end_time}</td>
-              <td><span class="badge ${act.allow_overlap ? 'badge-overlap' : 'badge-no-overlap'}">${act.allow_overlap ? 'מותרת' : 'לא מותרת'}</span></td>
-              <td>${act.registrations_count || 0}</td>
-              <td>
-                <button class="btn btn-danger" style="padding:6px 12px;font-size:12px" onclick="deleteActivity(${act.id})">מחק</button>
-              </td>
-            </tr>
-          `).join('')}
+          ${activities.map(act => {
+            const names = act.registered_names ? act.registered_names.split(', ') : [];
+            return `
+              <tr>
+                <td class="td-title">${escapeHtml(act.title)}</td>
+                <td>${formatDateShort(act.date)}</td>
+                <td>${act.start_time} – ${act.end_time}</td>
+                <td><span class="badge ${act.allow_overlap ? 'badge-overlap' : 'badge-no-overlap'}">${act.allow_overlap ? 'מותרת' : 'לא מותרת'}</span></td>
+                <td class="td-names">
+                  ${names.length > 0
+                    ? names.map(n => `<span class="name-pill">${escapeHtml(n)}</span>`).join('')
+                    : '<span style="color:var(--text-3);font-size:12px">אין</span>'
+                  }
+                </td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="openActivityModal(${act.id}, ${isPast})">
+                      👥 ${isPast ? 'צפה' : 'שיבוץ'}
+                    </button>
+                    <button class="btn btn-danger" style="padding:6px 10px;font-size:12px" onclick="deleteActivity(${act.id})">מחק</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     `;
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function deleteActivity(id) {
@@ -386,42 +632,51 @@ async function deleteActivity(id) {
     showToast('הפעילות נמחקה בהצלחה');
     loadAdminActivities();
     loadWeeklyView();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function createActivity() {
-  const title = document.getElementById('act-title').value.trim();
-  const date = document.getElementById('act-date').value;
-  const start_time = document.getElementById('act-start').value;
-  const end_time = document.getElementById('act-end').value;
-  const allow_overlap = document.getElementById('act-overlap').checked;
+  const title               = document.getElementById('act-title').value.trim();
+  const start_date          = document.getElementById('act-start-date').value;
+  const end_date            = document.getElementById('act-end-date').value;
+  const start_time          = document.getElementById('act-start').value;
+  const end_time            = document.getElementById('act-end').value;
+  const allow_overlap       = document.getElementById('act-overlap').checked;
+  const lock_unregistration = document.getElementById('act-lock-unreg').checked;
+  const capacity            = document.getElementById('act-capacity').value;
+  const notes               = document.getElementById('act-notes').value.trim();
   hideError('create-act-error');
 
-  if (!title || !date || !start_time || !end_time) {
+  if (!title || !start_date || !start_time || !end_time) {
     showError('create-act-error', 'נא למלא את כל השדות החובה');
     return;
   }
-
+  if (end_date && end_date < start_date) {
+    showError('create-act-error', 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה');
+    return;
+  }
   try {
-    await API.post('/activities', { title, date, start_time, end_time, allow_overlap });
-    showToast('הפעילות נוצרה בהצלחה! ✅');
+    const res = await API.post('/activities', {
+      title, start_date, end_date: end_date || start_date,
+      start_time, end_time, allow_overlap, lock_unregistration,
+      capacity: capacity || null,
+      notes: notes || null
+    });
+    showToast(res.message + ' ✅');
     document.getElementById('create-activity-form').classList.add('hidden');
-    // Reset form
-    ['act-title', 'act-date', 'act-start', 'act-end'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('act-overlap').checked = false;
+    ['act-title','act-start-date','act-end-date','act-start','act-end','act-capacity','act-notes']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('act-overlap').checked    = false;
+    document.getElementById('act-lock-unreg').checked = false;
     loadAdminActivities();
     loadWeeklyView();
-  } catch (e) {
-    showError('create-act-error', e.message);
-  }
+  } catch (e) { showError('create-act-error', e.message); }
 }
 
-// ===== ADMIN: MANAGE USERS =====
+// ===== ADMIN: MANAGE USERS WITH ATTRIBUTES + AVAILABILITY =====
 async function loadUsers() {
   try {
-    const users = await API.get('/users');
+    const users     = await API.get('/users');
     const container = document.getElementById('users-list');
 
     if (users.length === 0) {
@@ -429,33 +684,133 @@ async function loadUsers() {
       return;
     }
 
-    container.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>שם משתמש</th>
-            <th>תפקיד</th>
-            <th>תאריך הצטרפות</th>
-            <th>פעולות</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${users.map(u => `
-            <tr>
-              <td class="td-title">${escapeHtml(u.username)}</td>
-              <td><span class="badge ${u.is_admin ? 'badge-admin' : 'badge-user'}">${u.is_admin ? 'מנהל' : 'עובד'}</span></td>
-              <td>${new Date(u.created_at).toLocaleDateString('he-IL')}</td>
-              <td>
-                ${!u.is_admin ? `<button class="btn btn-danger" style="padding:6px 12px;font-size:12px" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">מחק</button>` : '<span style="color:var(--text-3);font-size:12px">לא ניתן למחוק</span>'}
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
+    container.innerHTML = users.map(u => `
+      <div class="user-card" id="user-card-${u.id}">
+        <div class="user-card-header">
+          <div class="user-card-info">
+            <div class="user-card-avatar">${getInitials(u.username)}</div>
+            <div>
+              <div class="user-card-name">${escapeHtml(u.username)}</div>
+              <span class="badge ${u.is_admin ? 'badge-admin' : 'badge-user'}">${u.is_admin ? 'מנהל' : 'עובד'}</span>
+            </div>
+          </div>
+          ${!u.is_admin
+            ? `<button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
+                 onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">מחק עובד</button>`
+            : ''
+          }
+        </div>
+
+        <!-- Attributes -->
+        <div class="user-attrs">
+          <div class="attrs-label">תכונות:</div>
+          <div class="attrs-list" id="attrs-list-${u.id}">
+            ${renderAttrPills(u.id, u.attributes)}
+          </div>
+          <div class="attr-add-row">
+            <input type="text" class="attr-input" id="attr-input-${u.id}"
+              placeholder="הוסף תכונה (לדוגמה: רישיון צבאי)..."
+              onkeydown="if(event.key==='Enter') addAttribute(${u.id})" />
+            <button class="btn btn-ghost" style="white-space:nowrap" onclick="addAttribute(${u.id})">+ הוסף</button>
+          </div>
+          <div class="error-msg hidden" id="attr-error-${u.id}"></div>
+        </div>
+
+        ${!u.is_admin ? `
+        <!-- Availability per day -->
+        <div class="user-avail-section">
+          <div class="attrs-label">זמינות שבועית:</div>
+          <div class="avail-week-grid" id="avail-grid-${u.id}">
+            <div class="loading-msg" style="padding:8px 0">טוען...</div>
+          </div>
+        </div>` : ''}
+      </div>
+    `).join('');
+
+    // Load availability for each non-admin user
+    for (const u of users) {
+      if (!u.is_admin) loadUserAvailability(u.id);
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadUserAvailability(userId) {
+  try {
+    const days = await API.get(`/availability/${userId}`);
+    const grid = document.getElementById(`avail-grid-${userId}`);
+    if (!grid) return;
+    grid.innerHTML = days.map(d => `
+      <div class="avail-day-cell">
+        <span class="avail-day-name">${d.day_name}</span>
+        <select class="avail-day-select avail-sel-${d.status.toLowerCase()}"
+          onchange="setUserAvailability(${userId}, ${d.day_of_week}, this.value, this)">
+          ${AVAIL_OPTS.map(o =>
+            `<option value="${o.value}" ${d.status === o.value ? 'selected' : ''}>${o.label}</option>`
+          ).join('')}
+        </select>
+      </div>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function setUserAvailability(userId, day, status, selectEl) {
+  try {
+    await API.request('PUT', `/availability/${userId}/${day}`, { status });
+    // Update select color class
+    selectEl.className = `avail-day-select avail-sel-${status.toLowerCase()}`;
+    showToast(`זמינות עודכנה ✅`);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderAttrPills(userId, attributes) {
+  if (!attributes || attributes.length === 0) {
+    return '<span class="no-attrs">אין תכונות עדיין</span>';
+  }
+  return attributes.map(a => `
+    <span class="attr-pill">
+      ${escapeHtml(a.attribute)}
+      <button class="attr-remove" onclick="deleteUserAttribute(${userId}, ${a.id})" title="הסר תכונה">×</button>
+    </span>
+  `).join('');
+}
+
+async function addAttribute(userId) {
+  const input = document.getElementById(`attr-input-${userId}`);
+  const value = input.value.trim();
+  hideError(`attr-error-${userId}`);
+
+  if (!value) { showError(`attr-error-${userId}`, 'נא להזין תכונה'); return; }
+
+  try {
+    await API.post(`/users/${userId}/attributes`, { attribute: value });
+    input.value = '';
+    showToast('התכונה נוספה בהצלחה ✅');
+    await refreshUserAttrs(userId);
+  } catch (e) { showError(`attr-error-${userId}`, e.message); }
+}
+
+async function deleteUserAttribute(userId, attrId) {
+  console.log('[deleteUserAttribute] userId:', userId, 'attrId:', attrId);
+  try {
+    const res = await API.delete(`/users/${userId}/attributes/${attrId}`);
+    console.log('[deleteUserAttribute] server response:', res);
+    showToast('התכונה הוסרה');
+    await refreshUserAttrs(userId);
   } catch (e) {
+    console.error('[deleteUserAttribute] error:', e.message);
     showToast(e.message, 'error');
   }
+}
+
+async function refreshUserAttrs(userId) {
+  try {
+    const users = await API.get('/users');
+    const user  = users.find(u => u.id === userId);
+    if (user) {
+      document.getElementById(`attrs-list-${userId}`).innerHTML =
+        renderAttrPills(userId, user.attributes);
+    }
+  } catch (e) { console.error(e); }
 }
 
 async function deleteUser(id, username) {
@@ -464,98 +819,129 @@ async function deleteUser(id, username) {
     await API.delete(`/users/${id}`);
     showToast(`המשתמש "${username}" נמחק בהצלחה`);
     loadUsers();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function addUser() {
   const username = document.getElementById('new-username').value.trim();
   hideError('add-user-error');
-
   if (!username) { showError('add-user-error', 'נא להזין שם משתמש'); return; }
-
   try {
     await API.post('/users', { username });
     showToast(`המשתמש "${username}" נוסף בהצלחה! ✅`);
     document.getElementById('new-username').value = '';
     document.getElementById('add-user-form').classList.add('hidden');
     loadUsers();
+  } catch (e) { showError('add-user-error', e.message); }
+}
+
+// ===== EDIT MODAL =====
+function openEditModal(act) {
+  // Pre-fill all fields
+  document.getElementById('edit-title').value        = act.title || '';
+  document.getElementById('edit-date').value         = act.date  || '';
+  document.getElementById('edit-start').value        = act.start_time || '';
+  document.getElementById('edit-end').value          = act.end_time   || '';
+  document.getElementById('edit-capacity').value     = act.capacity != null ? act.capacity : '';
+  document.getElementById('edit-notes').value        = act.notes  || '';
+  document.getElementById('edit-overlap').checked    = !!act.allow_overlap;
+  document.getElementById('edit-lock-unreg').checked = !!act.lock_unregistration;
+  hideError('edit-error');
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.add('hidden');
+  hideError('edit-error');
+}
+
+async function saveEditActivity() {
+  const title               = document.getElementById('edit-title').value.trim();
+  const date                = document.getElementById('edit-date').value;
+  const start_time          = document.getElementById('edit-start').value;
+  const end_time            = document.getElementById('edit-end').value;
+  const capacity            = document.getElementById('edit-capacity').value;
+  const notes               = document.getElementById('edit-notes').value.trim();
+  const allow_overlap       = document.getElementById('edit-overlap').checked;
+  const lock_unregistration = document.getElementById('edit-lock-unreg').checked;
+  hideError('edit-error');
+
+  if (!title || !date || !start_time || !end_time) {
+    showError('edit-error', 'נא למלא את כל השדות החובה');
+    return;
+  }
+
+  try {
+    const res = await API.request('PUT', `/activities/${currentActivityId}`, {
+      title, date, start_time, end_time,
+      allow_overlap, lock_unregistration,
+      capacity: capacity !== '' ? parseInt(capacity) : null,
+      notes: notes || null
+    });
+    closeEditModal();
+    // Refresh the activity modal with updated data
+    await openActivityModal(currentActivityId, isPastDate(date));
+    showToast(res.message + ' ✅');
+    loadWeeklyView();
+    if (document.getElementById('view-manage-activities')?.classList.contains('active')) {
+      loadAdminActivities();
+    }
   } catch (e) {
-    showError('add-user-error', e.message);
+    showError('edit-error', e.message);
   }
 }
 
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', async () => {
-  // Check if already logged in
-  try {
-    const user = await API.get('/auth/me');
-    currentUser = user;
-    initApp();
-  } catch (_) {
-    // Not logged in, show login screen
-  }
+  try { currentUser = await API.get('/auth/me'); initApp(); } catch (_) {}
 
-  // Login
   document.getElementById('login-btn').addEventListener('click', handleLogin);
   document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
   document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
-
-  // Logout
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
-  // Nav items
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
       const view = item.dataset.view;
       switchView(view);
-      if (view === 'weekly') loadWeeklyView();
-      else if (view === 'my-schedule') loadMySchedule();
-      else if (view === 'manage-activities') loadAdminActivities();
-      else if (view === 'manage-users') loadUsers();
+      if (view === 'weekly')              { setWeeklyTab(weeklyTab); }
+      else if (view === 'my-schedule')    loadMySchedule();
+      else if (view === 'manage-activities') { setAdminActTab(adminActTab); }
+      else if (view === 'manage-users')   loadUsers();
     });
   });
 
-  // Weekly navigation
+  // Week navigation
   document.getElementById('prev-week').addEventListener('click', () => {
-    currentWeekStart.setDate(currentWeekStart.getDate() - 7);
-    loadWeeklyView();
+    currentWeekStart.setDate(currentWeekStart.getDate() - 7); loadWeeklyView();
   });
   document.getElementById('next-week').addEventListener('click', () => {
-    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
-    loadWeeklyView();
+    currentWeekStart.setDate(currentWeekStart.getDate() + 7); loadWeeklyView();
   });
   document.getElementById('today-btn').addEventListener('click', () => {
-    currentWeekStart = getWeekStart(new Date());
-    loadWeeklyView();
+    currentWeekStart = getWeekStart(new Date()); loadWeeklyView();
   });
 
-  // My schedule navigation
-  document.getElementById('my-prev-week').addEventListener('click', () => {
-    myWeekStart.setDate(myWeekStart.getDate() - 7);
-    loadMySchedule();
-  });
-  document.getElementById('my-next-week').addEventListener('click', () => {
-    myWeekStart.setDate(myWeekStart.getDate() + 7);
-    loadMySchedule();
-  });
-  document.getElementById('my-today-btn').addEventListener('click', () => {
-    myWeekStart = getWeekStart(new Date());
-    loadMySchedule();
-  });
-
-  // Modal close
+  // Modal
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('activity-modal').addEventListener('click', e => {
     if (e.target === document.getElementById('activity-modal')) closeModal();
   });
+  document.getElementById('assign-user-btn').addEventListener('click', assignUser);
 
-  // Create activity form toggle
+  // Edit activity modal
+  document.getElementById('edit-modal-close').addEventListener('click', closeEditModal);
+  document.getElementById('edit-cancel-btn').addEventListener('click', closeEditModal);
+  document.getElementById('edit-save-btn').addEventListener('click', saveEditActivity);
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('edit-modal')) closeEditModal();
+  });
+
+  // Create activity
   document.getElementById('show-create-activity-form').addEventListener('click', () => {
     document.getElementById('create-activity-form').classList.remove('hidden');
-    // Set default date to today
-    document.getElementById('act-date').value = formatDate(new Date());
+    document.getElementById('act-start-date').value = formatDate(new Date());
+    document.getElementById('act-end-date').value   = '';
   });
   document.getElementById('cancel-create-activity').addEventListener('click', () => {
     document.getElementById('create-activity-form').classList.add('hidden');
@@ -563,7 +949,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('create-activity-btn').addEventListener('click', createActivity);
 
-  // Add user form toggle
+  // Add user
   document.getElementById('show-add-user-form').addEventListener('click', () => {
     document.getElementById('add-user-form').classList.remove('hidden');
   });

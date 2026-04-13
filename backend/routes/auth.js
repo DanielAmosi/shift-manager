@@ -27,6 +27,7 @@ module.exports = function (db) {
         'SELECT * FROM users WHERE username = ? COLLATE NOCASE',
         [trimmed]
       );
+
       if (!user)
         return res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
 
@@ -51,9 +52,9 @@ module.exports = function (db) {
     if (!req.session.userId)
       return res.status(401).json({ error: 'לא מחובר' });
     res.json({
-      id:      req.session.userId,
+      id: req.session.userId,
       username: req.session.username,
-      isAdmin:  req.session.isAdmin
+      isAdmin: req.session.isAdmin
     });
   });
 

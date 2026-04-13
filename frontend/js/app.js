@@ -766,7 +766,7 @@ function renderAttrPills(userId, attributes) {
   return attributes.map(a => `
     <span class="attr-pill">
       ${escapeHtml(a.attribute)}
-      <button class="attr-remove" onclick="removeAttribute(${userId}, ${a.id})" title="הסר תכונה">×</button>
+      <button class="attr-remove" onclick="deleteUserAttribute(${userId}, ${a.id})" title="הסר תכונה">×</button>
     </span>
   `).join('');
 }
@@ -786,12 +786,17 @@ async function addAttribute(userId) {
   } catch (e) { showError(`attr-error-${userId}`, e.message); }
 }
 
-async function removeAttribute(userId, attrId) {
+async function deleteUserAttribute(userId, attrId) {
+  console.log('[deleteUserAttribute] userId:', userId, 'attrId:', attrId);
   try {
-    await API.delete(`/users/${userId}/attributes/${attrId}`);
+    const res = await API.delete(`/users/${userId}/attributes/${attrId}`);
+    console.log('[deleteUserAttribute] server response:', res);
     showToast('התכונה הוסרה');
     await refreshUserAttrs(userId);
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) {
+    console.error('[deleteUserAttribute] error:', e.message);
+    showToast(e.message, 'error');
+  }
 }
 
 async function refreshUserAttrs(userId) {

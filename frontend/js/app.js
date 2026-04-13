@@ -462,14 +462,53 @@ function renderRegisteredList(registrations, activityId) {
   }
 }
 
+// Availability helpers
+const AVAIL_LABEL  = { AVAILABLE: 'זמין', UNAVAILABLE: 'לא זמין', LIMITED: 'מוגבל' };
+const AVAIL_EMOJI  = { AVAILABLE: '🟢',   UNAVAILABLE: '🔴',        LIMITED: '🟠' };
+const AVAIL_OPTS   = [
+  { value: 'AVAILABLE',   label: 'זמין 🟢'   },
+  { value: 'LIMITED',     label: 'מוגבל 🟠'  },
+  { value: 'UNAVAILABLE', label: 'לא זמין 🔴' },
+];
+const DAY_NAMES_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
 async function loadAvailableUsers(activityId) {
   try {
     const users = await API.get(`/assignments/available/${activityId}`);
-    const sel = document.getElementById('assign-user-select');
-    sel.innerHTML = users.length === 0
-      ? '<option value="">— כל העובדים כבר משובצים —</option>'
-      : '<option value="">— בחר עובד לשיבוץ —</option>' +
-        users.map(u => `<option value="${u.id}">${escapeHtml(u.username)}</option>`).join('');
+    const sel   = document.getElementById('assign-user-select');
+
+    if (users.length === 0) {
+      sel.innerHTML = '<option value="">— כל העובדים כבר משובצים —</option>';
+
+      // Clear visual list too
+      const listEl = document.getElementById('assign-user-list');
+      if (listEl) listEl.innerHTML = '';
+      return;
+    }
+
+    // Populate <select> with status in option text
+    sel.innerHTML = '<option value="">— בחר עובד לשיבוץ —</option>' +
+      users.map(u => {
+        const emoji = AVAIL_EMOJI[u.availability_status] || '';
+        return `<option value="${u.id}">${escapeHtml(u.username)} ${emoji}</option>`;
+      }).join('');
+
+    // Render visual list below the select for richer display
+    const listEl = document.getElementById('assign-user-list');
+    if (listEl) {
+      listEl.innerHTML = users.map(u => {
+        const status = u.availability_status || 'AVAILABLE';
+        return `
+          <div class="avail-user-row avail-${status.toLowerCase()}"
+               onclick="document.getElementById('assign-user-select').value='${u.id}'">
+            <span class="avail-name">${escapeHtml(u.username)}</span>
+            <span class="avail-badge avail-badge-${status.toLowerCase()}">
+              ${AVAIL_EMOJI[status]} ${AVAIL_LABEL[status]}
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
   } catch (e) { console.error(e); }
 }
 
@@ -631,7 +670,7 @@ async function createActivity() {
   } catch (e) { showError('create-act-error', e.message); }
 }
 
-// ===== ADMIN: MANAGE USERS WITH ATTRIBUTES =====
+// ===== ADMIN: MANAGE USERS WITH ATTRIBUTES + AVAILABILITY =====
 async function loadUsers() {
   try {
     const users     = await API.get('/users');
@@ -659,7 +698,7 @@ async function loadUsers() {
           }
         </div>
 
-        <!-- Attributes section -->
+        <!-- Attributes -->
         <div class="user-attrs">
           <div class="attrs-label">תכונות:</div>
           <div class="attrs-list" id="attrs-list-${u.id}">
@@ -669,14 +708,54 @@ async function loadUsers() {
             <input type="text" class="attr-input" id="attr-input-${u.id}"
               placeholder="הוסף תכונה (לדוגמה: רישיון צבאי)..."
               onkeydown="if(event.key==='Enter') addAttribute(${u.id})" />
-            <button class="btn btn-ghost" style="white-space:nowrap" onclick="addAttribute(${u.id})">
-              + הוסף
-            </button>
+            <button class="btn btn-ghost" style="white-space:nowrap" onclick="addAttribute(${u.id})">+ הוסף</button>
           </div>
           <div class="error-msg hidden" id="attr-error-${u.id}"></div>
         </div>
+
+        ${!u.is_admin ? `
+        <!-- Availability per day -->
+        <div class="user-avail-section">
+          <div class="attrs-label">זמינות שבועית:</div>
+          <div class="avail-week-grid" id="avail-grid-${u.id}">
+            <div class="loading-msg" style="padding:8px 0">טוען...</div>
+          </div>
+        </div>` : ''}
       </div>
     `).join('');
+
+    // Load availability for each non-admin user
+    for (const u of users) {
+      if (!u.is_admin) loadUserAvailability(u.id);
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadUserAvailability(userId) {
+  try {
+    const days = await API.get(`/availability/${userId}`);
+    const grid = document.getElementById(`avail-grid-${userId}`);
+    if (!grid) return;
+    grid.innerHTML = days.map(d => `
+      <div class="avail-day-cell">
+        <span class="avail-day-name">${d.day_name}</span>
+        <select class="avail-day-select avail-sel-${d.status.toLowerCase()}"
+          onchange="setUserAvailability(${userId}, ${d.day_of_week}, this.value, this)">
+          ${AVAIL_OPTS.map(o =>
+            `<option value="${o.value}" ${d.status === o.value ? 'selected' : ''}>${o.label}</option>`
+          ).join('')}
+        </select>
+      </div>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function setUserAvailability(userId, day, status, selectEl) {
+  try {
+    await API.request('PUT', `/availability/${userId}/${day}`, { status });
+    // Update select color class
+    selectEl.className = `avail-day-select avail-sel-${status.toLowerCase()}`;
+    showToast(`זמינות עודכנה ✅`);
   } catch (e) { showToast(e.message, 'error'); }
 }
 

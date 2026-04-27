@@ -127,8 +127,7 @@ label {
 input[type="text"],
 input[type="date"],
 input[type="time"],
-input[type="email"],
-input[type="password"] {
+input[type="email"] {
   background: var(--bg-3);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
@@ -148,16 +147,6 @@ input:focus {
 }
 
 input::placeholder { color: var(--text-3); }
-
-/* מניעת דריסת עיצוב dark theme ע"י autofill של הדפדפן */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px var(--bg-3) inset !important;
-  -webkit-text-fill-color: var(--text) !important;
-  border-color: var(--border) !important;
-  caret-color: var(--text);
-}
 
 /* ===== BUTTONS ===== */
 .btn {
@@ -1315,3 +1304,66 @@ input[type="number"]::placeholder { color: var(--text-3); }
 .avail-sel-available   { background: rgba(63,185,80,0.15);  color: #3fb950; border-color: rgba(63,185,80,0.4); }
 .avail-sel-limited     { background: rgba(210,153,34,0.15); color: #d29922; border-color: rgba(210,153,34,0.4); }
 .avail-sel-unavailable { background: rgba(248,81,73,0.15);  color: #f85149; border-color: rgba(248,81,73,0.4); }
+
+/* ===== TEAM FILTER TABS ===== */
+.team-tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.team-tab-btn {
+  padding: 6px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.team-tab-btn:hover { background: var(--bg-3); color: var(--text); border-color: var(--border-2); }
+.team-tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 2px 8px rgba(240,136,62,0.35); }
+
+/* ===== CHIP TEAM LABEL ===== */
+.chip-team {
+  font-size: 10px;
+  color: var(--primary);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* ===== TEAM CHECKBOXES IN USER CARD ===== */
+.user-teams-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.team-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-4);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: all var(--transition);
+  user-select: none;
+}
+.team-checkbox-label:hover { border-color: var(--primary); color: var(--text); }
+.team-checkbox-label input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer; }
+.team-checkbox-label:has(input:checked) {
+  background: var(--primary-soft);
+  border-color: rgba(240,136,62,0.4);
+  color: var(--primary);
+}

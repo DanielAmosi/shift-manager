@@ -9,86 +9,75 @@ module.exports = function (db) {
     next();
   }
 
-  // GET /api/users — with attributes
+  // GET /api/users — with attributes and teams
   router.get('/', requireAdmin, async (req, res) => {
     try {
       const users = await db.all(
         'SELECT id, username, is_admin, created_at FROM users ORDER BY created_at DESC'
       );
-      const attrs = await db.all(
-        'SELECT id, user_id, attribute FROM user_attributes ORDER BY id ASC'
-      );
+      const attrs = await db.all('SELECT id, user_id, attribute FROM user_attributes ORDER BY id ASC');
+      const userTeams = await db.all(`
+        SELECT ut.user_id, t.id AS team_id, t.name AS team_name
+        FROM user_teams ut JOIN teams t ON t.id = ut.team_id
+        ORDER BY t.name ASC
+      `);
+
       users.forEach(u => {
         u.attributes = attrs.filter(a => a.user_id === u.id);
+        u.teams      = userTeams.filter(ut => ut.user_id === u.id)
+          .map(ut => ({ id: ut.team_id, name: ut.team_name }));
       });
       res.json(users);
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'שגיאת שרת' });
-    }
+    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
-  // POST /api/users — create user
+  // POST /api/users
   router.post('/', requireAdmin, async (req, res) => {
     try {
       const { username } = req.body;
       if (!username || !username.trim())
         return res.status(400).json({ error: 'נא להזין שם משתמש' });
-
       const trimmed = username.trim();
       if (trimmed.toLowerCase() === 'admin')
         return res.status(400).json({ error: 'לא ניתן ליצור משתמש עם שם "admin"' });
-
       const existing = await db.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE', [trimmed]);
       if (existing) return res.status(409).json({ error: 'משתמש עם שם זה כבר קיים' });
-
       const result = await db.run('INSERT INTO users (username, is_admin) VALUES (?, 0)', [trimmed]);
-      res.status(201).json({ id: result.lastInsertRowid, username: trimmed, is_admin: 0, attributes: [] });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'שגיאת שרת' });
-    }
+      res.status(201).json({ id: result.lastInsertRowid, username: trimmed, is_admin: 0, attributes: [], teams: [] });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
-  // DELETE /api/users/:id — delete user
+  // DELETE /api/users/:id
   router.delete('/:id', requireAdmin, async (req, res) => {
     try {
       const user = await db.get('SELECT * FROM users WHERE id = ?', [req.params.id]);
       if (!user) return res.status(404).json({ error: 'משתמש לא נמצא' });
       if (user.is_admin) return res.status(400).json({ error: 'לא ניתן למחוק את חשבון המנהל' });
-
       await db.run('DELETE FROM registrations WHERE user_id = ?', [req.params.id]);
       await db.run('DELETE FROM user_attributes WHERE user_id = ?', [req.params.id]);
+      await db.run('DELETE FROM user_teams WHERE user_id = ?', [req.params.id]);
       await db.run('DELETE FROM users WHERE id = ?', [req.params.id]);
       res.json({ message: 'המשתמש נמחק בהצלחה' });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'שגיאת שרת' });
-    }
+    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
-  // POST /api/users/:id/attributes — add attribute
+  // POST /api/users/:id/attributes
   router.post('/:id/attributes', requireAdmin, async (req, res) => {
     try {
       const { attribute } = req.body;
       if (!attribute || !attribute.trim())
         return res.status(400).json({ error: 'נא להזין תכונה' });
-
       const user = await db.get('SELECT id FROM users WHERE id = ?', [req.params.id]);
       if (!user) return res.status(404).json({ error: 'משתמש לא נמצא' });
-
       const result = await db.run(
         'INSERT INTO user_attributes (user_id, attribute) VALUES (?, ?)',
         [req.params.id, attribute.trim()]
       );
       res.status(201).json({ id: result.lastInsertRowid, user_id: Number(req.params.id), attribute: attribute.trim() });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'שגיאת שרת' });
-    }
+    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
-  // DELETE /api/users/:id/attributes/:attrId — remove attribute
+  // DELETE /api/users/:id/attributes/:attrId
   router.delete('/:id/attributes/:attrId', requireAdmin, async (req, res) => {
     try {
       const attr = await db.get(
@@ -96,13 +85,9 @@ module.exports = function (db) {
         [req.params.attrId, req.params.id]
       );
       if (!attr) return res.status(404).json({ error: 'תכונה לא נמצאה' });
-
       await db.run('DELETE FROM user_attributes WHERE id = ?', [req.params.attrId]);
       res.json({ message: 'התכונה נמחקה בהצלחה' });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: 'שגיאת שרת' });
-    }
+    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
   return router;

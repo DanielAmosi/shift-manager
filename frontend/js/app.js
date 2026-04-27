@@ -19,9 +19,11 @@ const API = {
 // ===== STATE =====
 let currentUser      = null;
 let currentWeekStart = getWeekStart(new Date());
-let weeklyTab        = 'future';   // 'future' | 'past'
+let weeklyTab        = 'future';
 let myTab            = 'future';
 let adminActTab      = 'future';
+let allTeams         = [];   // cached teams list
+let activeTeamFilter = null; // null = all teams
 
 // ===== UTILS =====
 function getWeekStart(date) {
@@ -104,12 +106,10 @@ function switchView(viewId) {
 // ===== LOGIN =====
 async function handleLogin() {
   const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
   hideError('login-error');
   if (!username) { showError('login-error', 'נא להזין שם משתמש'); return; }
-  if (!password) { showError('login-error', 'נא להזין סיסמה'); return; }
   try {
-    currentUser = await API.post('/auth/login', { username, password });
+    currentUser = await API.post('/auth/login', { username });
     initApp();
   } catch (e) { showError('login-error', e.message); }
 }
@@ -125,7 +125,7 @@ function initApp() {
     el.classList.toggle('hidden', !currentUser.isAdmin)
   );
   switchView('weekly');
-  setWeeklyTab('future');
+  loadTeams().then(() => setWeeklyTab('future'));
 }
 
 async function handleLogout() {
@@ -134,7 +134,6 @@ async function handleLogout() {
   document.getElementById('app-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('login-username').value = '';
-  document.getElementById('login-password').value = '';
   hideError('login-error');
 }
 
@@ -156,12 +155,11 @@ async function loadWeeklyView() {
   const weekEnd = getWeekEnd(currentWeekStart);
   document.getElementById('week-label').textContent = formatWeekLabel(currentWeekStart);
 
+  let url = `/activities?week_start=${formatDate(currentWeekStart)}&week_end=${formatDate(weekEnd)}`;
+  if (activeTeamFilter) url += `&team_id=${activeTeamFilter}`;
+
   let activities = [];
-  try {
-    activities = await API.get(
-      `/activities?week_start=${formatDate(currentWeekStart)}&week_end=${formatDate(weekEnd)}`
-    );
-  } catch (e) { showToast(e.message, 'error'); }
+  try { activities = await API.get(url); } catch (e) { showToast(e.message, 'error'); }
 
   const grid = document.getElementById('week-grid');
   grid.innerHTML = '';
@@ -197,7 +195,9 @@ async function loadWeeklyPast() {
   const container = document.getElementById('weekly-past-list');
   container.innerHTML = '<div class="loading-msg">טוען...</div>';
   try {
-    const activities = await API.get('/activities?period=past');
+    let url = '/activities?period=past';
+    if (activeTeamFilter) url += `&team_id=${activeTeamFilter}`;
+    const activities = await API.get(url);
     renderActivitiesList(container, activities, true);
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -213,6 +213,7 @@ function buildActivityChip(act, isPast) {
   div.className = 'activity-chip' + (act.user_registered ? ' registered' : '') + (isPast ? ' past' : '');
   div.innerHTML = `
     <div class="chip-title">${escapeHtml(act.title)}</div>
+    ${act.team_name ? `<div class="chip-team">👥 ${escapeHtml(act.team_name)}</div>` : ''}
     <div class="chip-time">${act.start_time}–${act.end_time}</div>
     <div class="chip-names">
       ${names.length > 0
@@ -335,6 +336,7 @@ async function openActivityModal(activityId, isPast = false) {
     setText('modal-time',    `${act.start_time} – ${act.end_time}`);
     setText('modal-overlap', act.allow_overlap ? '✅ מותרת' : '❌ לא מותרת');
     setText('modal-lock',    isLocked ? '🔒 נעול — משתמש לא יכול לבטל' : '🔓 פתוח');
+    setText('modal-team',    act.team_name ? `👥 ${act.team_name}` : '—');
 
     // Capacity display
     const cap     = act.capacity;
@@ -382,12 +384,25 @@ async function openActivityModal(activityId, isPast = false) {
       btn.style.cursor      = 'pointer';
       btn.style.pointerEvents = 'auto';
 
+      // Check team membership
+      const userTeamIds = (currentUser.teams || []).map(t => t.id);
+      const notInTeam   = act.team_id && !userTeamIds.includes(act.team_id);
+
       if (pastActivity) {
         btn.className   = 'btn btn-ghost btn-full';
         btn.textContent = '🕐 פעילות זו כבר התקיימה';
         btn.disabled    = true;
         btn.style.opacity = '0.5';
         btn.onclick     = null;
+
+      } else if (notInTeam) {
+        btn.className        = 'btn btn-ghost btn-full';
+        btn.textContent      = `🚫 אינך שייך לקבוצה "${act.team_name || ''}"`;
+        btn.disabled         = true;
+        btn.style.opacity    = '0.6';
+        btn.style.cursor     = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.onclick          = null;
 
       } else if (isRegistered && isLocked) {
         btn.className        = 'btn btn-ghost btn-full';
@@ -645,22 +660,22 @@ async function createActivity() {
   const lock_unregistration = document.getElementById('act-lock-unreg').checked;
   const capacity            = document.getElementById('act-capacity').value;
   const notes               = document.getElementById('act-notes').value.trim();
+  const team_id             = document.getElementById('act-team').value;
   hideError('create-act-error');
 
   if (!title || !start_date || !start_time || !end_time) {
-    showError('create-act-error', 'נא למלא את כל השדות החובה');
-    return;
+    showError('create-act-error', 'נא למלא את כל השדות החובה'); return;
   }
   if (end_date && end_date < start_date) {
-    showError('create-act-error', 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה');
-    return;
+    showError('create-act-error', 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה'); return;
   }
   try {
     const res = await API.post('/activities', {
       title, start_date, end_date: end_date || start_date,
       start_time, end_time, allow_overlap, lock_unregistration,
       capacity: capacity || null,
-      notes: notes || null
+      notes: notes || null,
+      team_id: team_id || null
     });
     showToast(res.message + ' ✅');
     document.getElementById('create-activity-form').classList.add('hidden');
@@ -668,6 +683,7 @@ async function createActivity() {
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('act-overlap').checked    = false;
     document.getElementById('act-lock-unreg').checked = false;
+    document.getElementById('act-team').value         = '';
     loadAdminActivities();
     loadWeeklyView();
   } catch (e) { showError('create-act-error', e.message); }
@@ -717,6 +733,25 @@ async function loadUsers() {
         </div>
 
         ${!u.is_admin ? `
+        <!-- Teams membership -->
+        <div class="user-avail-section">
+          <div class="attrs-label">קבוצות:</div>
+          <div class="user-teams-list">
+            ${allTeams.length === 0
+              ? '<span class="no-attrs">אין קבוצות במערכת</span>'
+              : allTeams.map(t => {
+                  const inTeam = u.teams && u.teams.some(ut => ut.id === t.id);
+                  return `
+                    <label class="team-checkbox-label">
+                      <input type="checkbox" ${inTeam ? 'checked' : ''}
+                        onchange="toggleUserTeam(${u.id}, ${t.id}, this.checked)" />
+                      <span>${escapeHtml(t.name)}</span>
+                    </label>
+                  `;
+                }).join('')
+            }
+          </div>
+        </div>
         <!-- Availability per day -->
         <div class="user-avail-section">
           <div class="attrs-label">זמינות שבועית:</div>
@@ -835,9 +870,114 @@ async function addUser() {
   } catch (e) { showError('add-user-error', e.message); }
 }
 
+// ===== TEAMS =====
+async function loadTeams() {
+  try {
+    allTeams = await API.get('/teams');
+    renderTeamFilterTabs();
+    populateTeamSelects();
+  } catch (e) { console.error('loadTeams error:', e); }
+}
+
+function renderTeamFilterTabs() {
+  const container = document.getElementById('team-filter-tabs');
+  if (!container) return;
+
+  const tabs = [{ id: null, name: 'כל הקבוצות' }, ...allTeams];
+  container.innerHTML = tabs.map(t => `
+    <button class="team-tab-btn ${activeTeamFilter === t.id ? 'active' : ''}"
+      onclick="setTeamFilter(${t.id === null ? 'null' : t.id})">
+      ${escapeHtml(t.name)}
+    </button>
+  `).join('');
+}
+
+function setTeamFilter(teamId) {
+  activeTeamFilter = teamId;
+  renderTeamFilterTabs();
+  if (weeklyTab === 'future') loadWeeklyView();
+  else loadWeeklyPast();
+}
+
+function populateTeamSelects() {
+  const opts = allTeams.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+  // Create form
+  const actTeamSel = document.getElementById('act-team');
+  if (actTeamSel) actTeamSel.innerHTML = '<option value="">— בחר קבוצה —</option>' + opts;
+  // Edit modal
+  const editTeamSel = document.getElementById('edit-team');
+  if (editTeamSel) editTeamSel.innerHTML = '<option value="">— ללא קבוצה —</option>' + opts;
+}
+
+async function toggleUserTeam(userId, teamId, add) {
+  try {
+    if (add) {
+      await API.post(`/teams/${teamId}/users/${userId}`, {});
+      showToast('המשתמש נוסף לקבוצה ✅');
+    } else {
+      await API.delete(`/teams/${teamId}/users/${userId}`);
+      showToast('המשתמש הוסר מהקבוצה');
+    }
+    // Update currentUser.teams if it's the current user
+    if (userId === currentUser.id) {
+      const myTeams = await API.get('/teams/my');
+      currentUser.teams = myTeams;
+    }
+  } catch (e) { showToast(e.message, 'error'); await loadUsers(); }
+}
+
+// ===== MANAGE TEAMS VIEW =====
+async function loadTeamsView() {
+  await loadTeams();
+  const container = document.getElementById('teams-list');
+  if (!container) return;
+
+  if (allTeams.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><p>אין קבוצות במערכת עדיין</p></div>`;
+    return;
+  }
+
+  container.innerHTML = allTeams.map(t => `
+    <div class="user-card">
+      <div class="user-card-header">
+        <div class="user-card-info">
+          <div class="user-card-avatar" style="background:var(--primary-h)">👥</div>
+          <div>
+            <div class="user-card-name">${escapeHtml(t.name)}</div>
+            <span class="badge badge-user">${t.member_count || 0} חברים</span>
+          </div>
+        </div>
+        <button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
+          onclick="deleteTeam(${t.id}, '${escapeHtml(t.name)}')">מחק קבוצה</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function addTeam() {
+  const name = document.getElementById('new-team-name').value.trim();
+  hideError('add-team-error');
+  if (!name) { showError('add-team-error', 'נא להזין שם קבוצה'); return; }
+  try {
+    await API.post('/teams', { name });
+    showToast(`הקבוצה "${name}" נוצרה בהצלחה ✅`);
+    document.getElementById('new-team-name').value = '';
+    document.getElementById('add-team-form').classList.add('hidden');
+    loadTeamsView();
+  } catch (e) { showError('add-team-error', e.message); }
+}
+
+async function deleteTeam(id, name) {
+  if (!confirm(`למחוק את הקבוצה "${name}"? הפעילויות המשויכות אליה לא יימחקו.`)) return;
+  try {
+    await API.delete(`/teams/${id}`);
+    showToast(`הקבוצה "${name}" נמחקה`);
+    loadTeamsView();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
 // ===== EDIT MODAL =====
 function openEditModal(act) {
-  // Pre-fill all fields
   document.getElementById('edit-title').value        = act.title || '';
   document.getElementById('edit-date').value         = act.date  || '';
   document.getElementById('edit-start').value        = act.start_time || '';
@@ -846,6 +986,8 @@ function openEditModal(act) {
   document.getElementById('edit-notes').value        = act.notes  || '';
   document.getElementById('edit-overlap').checked    = !!act.allow_overlap;
   document.getElementById('edit-lock-unreg').checked = !!act.lock_unregistration;
+  const editTeam = document.getElementById('edit-team');
+  if (editTeam) editTeam.value = act.team_id || '';
   hideError('edit-error');
   document.getElementById('edit-modal').classList.remove('hidden');
 }
@@ -876,7 +1018,8 @@ async function saveEditActivity() {
       title, date, start_time, end_time,
       allow_overlap, lock_unregistration,
       capacity: capacity !== '' ? parseInt(capacity) : null,
-      notes: notes || null
+      notes: notes || null,
+      team_id: document.getElementById('edit-team')?.value || null
     });
     closeEditModal();
     // Refresh the activity modal with updated data
@@ -893,21 +1036,28 @@ async function saveEditActivity() {
 
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', async () => {
-  try { currentUser = await API.get('/auth/me'); initApp(); } catch (_) {}
+  try {
+    currentUser = await API.get('/auth/me');
+    // Load user's teams for membership checks
+    if (!currentUser.isAdmin) {
+      try { currentUser.teams = await API.get('/teams/my'); } catch (_) { currentUser.teams = []; }
+    }
+    initApp();
+  } catch (_) {}
 
   document.getElementById('login-btn').addEventListener('click', handleLogin);
   document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
-  document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
       const view = item.dataset.view;
       switchView(view);
-      if (view === 'weekly')              { setWeeklyTab(weeklyTab); }
-      else if (view === 'my-schedule')    loadMySchedule();
+      if (view === 'weekly')                 { setWeeklyTab(weeklyTab); }
+      else if (view === 'my-schedule')       loadMySchedule();
       else if (view === 'manage-activities') { setAdminActTab(adminActTab); }
-      else if (view === 'manage-users')   loadUsers();
+      else if (view === 'manage-teams')      loadTeamsView();
+      else if (view === 'manage-users')      loadUsers();
     });
   });
 
@@ -959,4 +1109,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('add-user-btn').addEventListener('click', addUser);
   document.getElementById('new-username').addEventListener('keydown', e => { if (e.key === 'Enter') addUser(); });
+
+  // Teams
+  document.getElementById('show-add-team-form')?.addEventListener('click', () => {
+    document.getElementById('add-team-form').classList.remove('hidden');
+  });
+  document.getElementById('cancel-add-team')?.addEventListener('click', () => {
+    document.getElementById('add-team-form').classList.add('hidden');
+    hideError('add-team-error');
+  });
+  document.getElementById('add-team-btn')?.addEventListener('click', addTeam);
+  document.getElementById('new-team-name')?.addEventListener('keydown', e => { if (e.key === 'Enter') addTeam(); });
 });

@@ -15,18 +15,18 @@ module.exports = function (db) {
     next();
   }
 
-  // GET /api/teams — all teams (any auth)
+  // GET /api/teams — all teams (any authenticated user)
   router.get('/', requireAuth, async (req, res) => {
     try {
       const teams = await db.all(`
-        SELECT t.*, (SELECT COUNT(*) FROM user_teams ut WHERE ut.team_id = t.id) as member_count
+        SELECT t.*, (SELECT COUNT(*) FROM user_teams ut WHERE ut.team_id = t.id) AS member_count
         FROM teams t ORDER BY t.name ASC
       `);
       res.json(teams);
     } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
-  // GET /api/teams/my — teams of current user (must be before /:id)
+  // GET /api/teams/my — teams of the currently logged-in user
   router.get('/my', requireAuth, async (req, res) => {
     try {
       const teams = await db.all(`
@@ -46,12 +46,13 @@ module.exports = function (db) {
       if (!name || !name.trim())
         return res.status(400).json({ error: 'נא להזין שם קבוצה' });
 
-      const existing = await db.get('SELECT id FROM teams WHERE name = ? COLLATE NOCASE', [name.trim()]);
+      const trimmed = name.trim();
+      const existing = await db.get('SELECT id FROM teams WHERE name = ? COLLATE NOCASE', [trimmed]);
       if (existing)
         return res.status(409).json({ error: 'קבוצה עם שם זה כבר קיימת' });
 
-      const result = await db.run('INSERT INTO teams (name) VALUES (?)', [name.trim()]);
-      res.status(201).json({ id: result.lastInsertRowid, name: name.trim(), member_count: 0 });
+      const result = await db.run('INSERT INTO teams (name) VALUES (?)', [trimmed]);
+      res.status(201).json({ id: result.lastInsertRowid, name: trimmed, member_count: 0 });
     } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
   });
 
@@ -62,7 +63,6 @@ module.exports = function (db) {
       if (!team) return res.status(404).json({ error: 'קבוצה לא נמצאה' });
 
       await db.run('DELETE FROM user_teams WHERE team_id = ?', [req.params.id]);
-      // Unlink activities from this team
       await db.run('UPDATE activities SET team_id = NULL WHERE team_id = ?', [req.params.id]);
       await db.run('DELETE FROM teams WHERE id = ?', [req.params.id]);
       res.json({ message: `הקבוצה "${team.name}" נמחקה` });
@@ -75,7 +75,6 @@ module.exports = function (db) {
       const { id, userId } = req.params;
       const team = await db.get('SELECT id FROM teams WHERE id = ?', [id]);
       if (!team) return res.status(404).json({ error: 'קבוצה לא נמצאה' });
-
       const user = await db.get('SELECT id FROM users WHERE id = ?', [userId]);
       if (!user) return res.status(404).json({ error: 'משתמש לא נמצא' });
 

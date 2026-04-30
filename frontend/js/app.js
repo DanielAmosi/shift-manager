@@ -19,11 +19,11 @@ const API = {
 // ===== STATE =====
 let currentUser      = null;
 let currentWeekStart = getWeekStart(new Date());
-let weeklyTab        = 'future';
+let weeklyTab        = 'future';   // 'future' | 'past'
 let myTab            = 'future';
 let adminActTab      = 'future';
-let allTeams         = [];   // cached teams list
-let activeTeamFilter = null; // null = all teams
+let allTeams         = [];         // cached teams list
+let activeTeamFilter = null;       // null = all, number = team_id
 
 // ===== UTILS =====
 function getWeekStart(date) {
@@ -106,10 +106,15 @@ function switchView(viewId) {
 // ===== LOGIN =====
 async function handleLogin() {
   const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
   hideError('login-error');
   if (!username) { showError('login-error', 'נא להזין שם משתמש'); return; }
+  if (!password) { showError('login-error', 'נא להזין סיסמה'); return; }
   try {
-    currentUser = await API.post('/auth/login', { username });
+    currentUser = await API.post('/auth/login', { username, password });
+    if (!currentUser.isAdmin) {
+      try { currentUser.teams = await API.get('/teams/my'); } catch (_) { currentUser.teams = []; }
+    }
     initApp();
   } catch (e) { showError('login-error', e.message); }
 }
@@ -125,6 +130,7 @@ function initApp() {
     el.classList.toggle('hidden', !currentUser.isAdmin)
   );
   switchView('weekly');
+  // Load teams, then render weekly view (teams needed for filter tabs)
   loadTeams().then(() => setWeeklyTab('future'));
 }
 
@@ -134,6 +140,7 @@ async function handleLogout() {
   document.getElementById('app-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
   hideError('login-error');
 }
 
@@ -159,7 +166,9 @@ async function loadWeeklyView() {
   if (activeTeamFilter) url += `&team_id=${activeTeamFilter}`;
 
   let activities = [];
-  try { activities = await API.get(url); } catch (e) { showToast(e.message, 'error'); }
+  try {
+    activities = await API.get(url);
+  } catch (e) { showToast(e.message, 'error'); }
 
   const grid = document.getElementById('week-grid');
   grid.innerHTML = '';
@@ -338,6 +347,10 @@ async function openActivityModal(activityId, isPast = false) {
     setText('modal-lock',    isLocked ? '🔒 נעול — משתמש לא יכול לבטל' : '🔓 פתוח');
     setText('modal-team',    act.team_name ? `👥 ${act.team_name}` : '—');
 
+    // Hide team row if no team
+    const teamRow = document.getElementById('modal-team-row');
+    if (teamRow) teamRow.style.display = act.team_name ? '' : 'none';
+
     // Capacity display
     const cap     = act.capacity;
     const regCount = act.registrations.length;
@@ -384,7 +397,7 @@ async function openActivityModal(activityId, isPast = false) {
       btn.style.cursor      = 'pointer';
       btn.style.pointerEvents = 'auto';
 
-      // Check team membership
+      // Check team membership (currentUser.teams set on login)
       const userTeamIds = (currentUser.teams || []).map(t => t.id);
       const notInTeam   = act.team_id && !userTeamIds.includes(act.team_id);
 
@@ -664,10 +677,12 @@ async function createActivity() {
   hideError('create-act-error');
 
   if (!title || !start_date || !start_time || !end_time) {
-    showError('create-act-error', 'נא למלא את כל השדות החובה'); return;
+    showError('create-act-error', 'נא למלא את כל השדות החובה');
+    return;
   }
   if (end_date && end_date < start_date) {
-    showError('create-act-error', 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה'); return;
+    showError('create-act-error', 'תאריך הסיום לא יכול להיות לפני תאריך ההתחלה');
+    return;
   }
   try {
     const res = await API.post('/activities', {
@@ -738,7 +753,7 @@ async function loadUsers() {
           <div class="attrs-label">קבוצות:</div>
           <div class="user-teams-list">
             ${allTeams.length === 0
-              ? '<span class="no-attrs">אין קבוצות במערכת</span>'
+              ? '<span class="no-attrs">אין קבוצות — צור קבוצות בניהול קבוצות</span>'
               : allTeams.map(t => {
                   const inTeam = u.teams && u.teams.some(ut => ut.id === t.id);
                   return `
@@ -870,114 +885,9 @@ async function addUser() {
   } catch (e) { showError('add-user-error', e.message); }
 }
 
-// ===== TEAMS =====
-async function loadTeams() {
-  try {
-    allTeams = await API.get('/teams');
-    renderTeamFilterTabs();
-    populateTeamSelects();
-  } catch (e) { console.error('loadTeams error:', e); }
-}
-
-function renderTeamFilterTabs() {
-  const container = document.getElementById('team-filter-tabs');
-  if (!container) return;
-
-  const tabs = [{ id: null, name: 'כל הקבוצות' }, ...allTeams];
-  container.innerHTML = tabs.map(t => `
-    <button class="team-tab-btn ${activeTeamFilter === t.id ? 'active' : ''}"
-      onclick="setTeamFilter(${t.id === null ? 'null' : t.id})">
-      ${escapeHtml(t.name)}
-    </button>
-  `).join('');
-}
-
-function setTeamFilter(teamId) {
-  activeTeamFilter = teamId;
-  renderTeamFilterTabs();
-  if (weeklyTab === 'future') loadWeeklyView();
-  else loadWeeklyPast();
-}
-
-function populateTeamSelects() {
-  const opts = allTeams.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
-  // Create form
-  const actTeamSel = document.getElementById('act-team');
-  if (actTeamSel) actTeamSel.innerHTML = '<option value="">— בחר קבוצה —</option>' + opts;
-  // Edit modal
-  const editTeamSel = document.getElementById('edit-team');
-  if (editTeamSel) editTeamSel.innerHTML = '<option value="">— ללא קבוצה —</option>' + opts;
-}
-
-async function toggleUserTeam(userId, teamId, add) {
-  try {
-    if (add) {
-      await API.post(`/teams/${teamId}/users/${userId}`, {});
-      showToast('המשתמש נוסף לקבוצה ✅');
-    } else {
-      await API.delete(`/teams/${teamId}/users/${userId}`);
-      showToast('המשתמש הוסר מהקבוצה');
-    }
-    // Update currentUser.teams if it's the current user
-    if (userId === currentUser.id) {
-      const myTeams = await API.get('/teams/my');
-      currentUser.teams = myTeams;
-    }
-  } catch (e) { showToast(e.message, 'error'); await loadUsers(); }
-}
-
-// ===== MANAGE TEAMS VIEW =====
-async function loadTeamsView() {
-  await loadTeams();
-  const container = document.getElementById('teams-list');
-  if (!container) return;
-
-  if (allTeams.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><p>אין קבוצות במערכת עדיין</p></div>`;
-    return;
-  }
-
-  container.innerHTML = allTeams.map(t => `
-    <div class="user-card">
-      <div class="user-card-header">
-        <div class="user-card-info">
-          <div class="user-card-avatar" style="background:var(--primary-h)">👥</div>
-          <div>
-            <div class="user-card-name">${escapeHtml(t.name)}</div>
-            <span class="badge badge-user">${t.member_count || 0} חברים</span>
-          </div>
-        </div>
-        <button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
-          onclick="deleteTeam(${t.id}, '${escapeHtml(t.name)}')">מחק קבוצה</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function addTeam() {
-  const name = document.getElementById('new-team-name').value.trim();
-  hideError('add-team-error');
-  if (!name) { showError('add-team-error', 'נא להזין שם קבוצה'); return; }
-  try {
-    await API.post('/teams', { name });
-    showToast(`הקבוצה "${name}" נוצרה בהצלחה ✅`);
-    document.getElementById('new-team-name').value = '';
-    document.getElementById('add-team-form').classList.add('hidden');
-    loadTeamsView();
-  } catch (e) { showError('add-team-error', e.message); }
-}
-
-async function deleteTeam(id, name) {
-  if (!confirm(`למחוק את הקבוצה "${name}"? הפעילויות המשויכות אליה לא יימחקו.`)) return;
-  try {
-    await API.delete(`/teams/${id}`);
-    showToast(`הקבוצה "${name}" נמחקה`);
-    loadTeamsView();
-  } catch (e) { showToast(e.message, 'error'); }
-}
-
 // ===== EDIT MODAL =====
 function openEditModal(act) {
+  // Pre-fill all fields
   document.getElementById('edit-title').value        = act.title || '';
   document.getElementById('edit-date').value         = act.date  || '';
   document.getElementById('edit-start').value        = act.start_time || '';
@@ -1006,6 +916,7 @@ async function saveEditActivity() {
   const notes               = document.getElementById('edit-notes').value.trim();
   const allow_overlap       = document.getElementById('edit-overlap').checked;
   const lock_unregistration = document.getElementById('edit-lock-unreg').checked;
+  const team_id             = document.getElementById('edit-team')?.value || null;
   hideError('edit-error');
 
   if (!title || !date || !start_time || !end_time) {
@@ -1019,7 +930,7 @@ async function saveEditActivity() {
       allow_overlap, lock_unregistration,
       capacity: capacity !== '' ? parseInt(capacity) : null,
       notes: notes || null,
-      team_id: document.getElementById('edit-team')?.value || null
+      team_id: team_id || null
     });
     closeEditModal();
     // Refresh the activity modal with updated data
@@ -1034,11 +945,116 @@ async function saveEditActivity() {
   }
 }
 
+// ===== TEAMS =====
+async function loadTeams() {
+  try {
+    allTeams = await API.get('/teams');
+    renderTeamFilterTabs();
+    populateTeamSelects();
+  } catch (e) { console.error('loadTeams:', e); }
+}
+
+function renderTeamFilterTabs() {
+  const container = document.getElementById('team-filter-tabs');
+  if (!container) return;
+  const tabs = [{ id: null, name: 'כל הקבוצות' }, ...allTeams];
+  container.innerHTML = tabs.map(t => `
+    <button class="team-tab-btn ${activeTeamFilter === t.id ? 'active' : ''}"
+      onclick="setTeamFilter(${t.id === null ? 'null' : t.id})">
+      ${escapeHtml(t.name)}
+    </button>
+  `).join('');
+}
+
+function setTeamFilter(teamId) {
+  activeTeamFilter = teamId;
+  renderTeamFilterTabs();
+  if (weeklyTab === 'future') loadWeeklyView();
+  else loadWeeklyPast();
+}
+
+function populateTeamSelects() {
+  const opts = allTeams.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+  const actTeam = document.getElementById('act-team');
+  if (actTeam) actTeam.innerHTML = '<option value="">— ללא קבוצה —</option>' + opts;
+  const editTeam = document.getElementById('edit-team');
+  if (editTeam) editTeam.innerHTML = '<option value="">— ללא קבוצה —</option>' + opts;
+}
+
+async function toggleUserTeam(userId, teamId, add) {
+  try {
+    if (add) {
+      await API.post(`/teams/${teamId}/users/${userId}`, {});
+      showToast('המשתמש נוסף לקבוצה ✅');
+    } else {
+      await API.delete(`/teams/${teamId}/users/${userId}`);
+      showToast('המשתמש הוסר מהקבוצה');
+    }
+    // Update currentUser teams if it's the logged-in user
+    if (userId === currentUser.id) {
+      try { currentUser.teams = await API.get('/teams/my'); } catch (_) {}
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+    await loadUsers(); // Re-render to restore checkbox state
+  }
+}
+
+// ===== MANAGE TEAMS VIEW =====
+async function loadTeamsView() {
+  await loadTeams();
+  const container = document.getElementById('teams-list');
+  if (!container) return;
+
+  if (allTeams.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><p>אין קבוצות במערכת עדיין</p></div>`;
+    return;
+  }
+
+  container.innerHTML = allTeams.map(t => `
+    <div class="user-card">
+      <div class="user-card-header">
+        <div class="user-card-info">
+          <div class="user-card-avatar" style="background:var(--primary-h);font-size:18px">👥</div>
+          <div>
+            <div class="user-card-name">${escapeHtml(t.name)}</div>
+            <span class="badge badge-user">${t.member_count || 0} חברים</span>
+          </div>
+        </div>
+        <button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
+          onclick="deleteTeam(${t.id}, '${escapeHtml(t.name)}')">מחק</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function addTeam() {
+  const name = document.getElementById('new-team-name').value.trim();
+  hideError('add-team-error');
+  if (!name) { showError('add-team-error', 'נא להזין שם קבוצה'); return; }
+  try {
+    await API.post('/teams', { name });
+    showToast(`הקבוצה "${name}" נוצרה ✅`);
+    document.getElementById('new-team-name').value = '';
+    document.getElementById('add-team-form').classList.add('hidden');
+    loadTeamsView();
+  } catch (e) { showError('add-team-error', e.message); }
+}
+
+async function deleteTeam(id, name) {
+  if (!confirm(`למחוק את הקבוצה "${name}"?`)) return;
+  try {
+    await API.delete(`/teams/${id}`);
+    showToast(`הקבוצה "${name}" נמחקה`);
+    loadTeamsView();
+    loadWeeklyView();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     currentUser = await API.get('/auth/me');
-    // Load user's teams for membership checks
     if (!currentUser.isAdmin) {
       try { currentUser.teams = await API.get('/teams/my'); } catch (_) { currentUser.teams = []; }
     }
@@ -1047,6 +1063,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('login-btn').addEventListener('click', handleLogin);
   document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+  document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -1057,7 +1074,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       else if (view === 'my-schedule')       loadMySchedule();
       else if (view === 'manage-activities') { setAdminActTab(adminActTab); }
       else if (view === 'manage-teams')      loadTeamsView();
-      else if (view === 'manage-users')      loadUsers();
+      else if (view === 'manage-users')      { loadTeams(); loadUsers(); }
     });
   });
 

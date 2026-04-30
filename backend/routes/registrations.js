@@ -32,19 +32,26 @@ module.exports = function (db) {
       const args = [userId];
 
       if (week_start && week_end) {
-        sql += ' AND a.date >= ? AND a.date <= ?'; args.push(week_start, week_end);
+        sql += ' AND a.date >= ? AND a.date <= ?';
+        args.push(week_start, week_end);
       } else if (period === 'future') {
-        sql += ' AND a.date >= ?'; args.push(today);
+        sql += ' AND a.date >= ?';
+        args.push(today);
       } else if (period === 'past') {
-        sql += ' AND a.date < ?'; args.push(today);
+        sql += ' AND a.date < ?';
+        args.push(today);
       }
 
       sql += (period === 'past')
         ? ' ORDER BY a.date DESC, a.start_time DESC'
         : ' ORDER BY a.date ASC, a.start_time ASC';
 
-      res.json(await db.all(sql, args));
-    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+      const activities = await db.all(sql, args);
+      res.json(activities);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'שגיאת שרת' });
+    }
   });
 
   // POST /api/registrations — self-register
@@ -80,29 +87,40 @@ module.exports = function (db) {
 
       // Capacity check
       if (activity.capacity != null) {
-        const countRow = await db.get('SELECT COUNT(*) as cnt FROM registrations WHERE activity_id = ?', [activity_id]);
-        if ((countRow?.cnt || 0) >= activity.capacity)
-          return res.status(400).json({ error: `הפעילות מלאה (${activity.capacity}/${activity.capacity} משתתפים)` });
+        const countRow = await db.get(
+          'SELECT COUNT(*) as cnt FROM registrations WHERE activity_id = ?', [activity_id]
+        );
+        const currentCount = countRow ? countRow.cnt : 0;
+        if (currentCount >= activity.capacity) {
+          return res.status(400).json({
+            error: `הפעילות מלאה (${activity.capacity}/${activity.capacity} משתתפים)`
+          });
+        }
       }
 
       // Overlap check
       const userActivities = await db.all(`
-        SELECT a.* FROM activities a JOIN registrations r ON r.activity_id = a.id
+        SELECT a.* FROM activities a
+        JOIN registrations r ON r.activity_id = a.id
         WHERE r.user_id = ? AND a.date = ? AND a.id != ?
       `, [userId, activity.date, activity_id]);
 
       for (const existing of userActivities) {
         if (timesOverlap(activity.start_time, activity.end_time, existing.start_time, existing.end_time)) {
-          if (!activity.allow_overlap && !existing.allow_overlap)
+          if (!activity.allow_overlap && !existing.allow_overlap) {
             return res.status(409).json({
-              error: `לא ניתן להירשם — חפיפה עם "${existing.title}" (${existing.start_time}–${existing.end_time}).`
+              error: `לא ניתן להירשם — חפיפה עם "${existing.title}" (${existing.start_time}–${existing.end_time}). אף פעילות לא מאפשרת חפיפה.`
             });
+          }
         }
       }
 
       await db.run('INSERT INTO registrations (user_id, activity_id) VALUES (?, ?)', [userId, activity_id]);
       res.status(201).json({ message: 'נרשמת לפעילות בהצלחה' });
-    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'שגיאת שרת' });
+    }
   });
 
   // DELETE /api/registrations/:activity_id — self-unregister
@@ -115,8 +133,9 @@ module.exports = function (db) {
       const activity = await db.get('SELECT * FROM activities WHERE id = ?', [activity_id]);
       if (!activity) return res.status(404).json({ error: 'פעילות לא נמצאה' });
 
-      if (activity.lock_unregistration === 1 && !isAdmin)
+      if (activity.lock_unregistration === 1 && !isAdmin) {
         return res.status(403).json({ error: 'לא ניתן לבטל הרשמה לפעילות זו — הביטול נעול על ידי המנהל' });
+      }
 
       const reg = await db.get(
         'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [userId, activity_id]
@@ -125,7 +144,10 @@ module.exports = function (db) {
 
       await db.run('DELETE FROM registrations WHERE user_id = ? AND activity_id = ?', [userId, activity_id]);
       res.json({ message: 'הרשמה בוטלה בהצלחה' });
-    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'שגיאת שרת' });
+    }
   });
 
   return router;

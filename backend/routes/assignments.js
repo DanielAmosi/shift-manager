@@ -12,11 +12,11 @@ module.exports = function (db) {
   function timesOverlap(s1, e1, s2, e2) { return s1 < e2 && e1 > s2; }
 
   // GET /api/assignments/available/:activity_id
-  // Returns users from activity's team NOT yet registered, with availability_status
   router.get('/available/:activity_id', requireAdmin, async (req, res) => {
     try {
       const { activity_id } = req.params;
-      const activity = await db.get('SELECT * FROM activities WHERE id = ?', [activity_id]);
+
+      const activity = await db.get('SELECT date, team_id FROM activities WHERE id = ?', [activity_id]);
       if (!activity) return res.status(404).json({ error: 'פעילות לא נמצאה' });
 
       const actDate   = new Date(activity.date + 'T00:00:00');
@@ -24,7 +24,7 @@ module.exports = function (db) {
 
       let users;
       if (activity.team_id) {
-        // Only users in the activity's team
+        // Only members of the activity's team
         users = await db.all(`
           SELECT u.id, u.username FROM users u
           JOIN user_teams ut ON ut.user_id = u.id
@@ -34,7 +34,7 @@ module.exports = function (db) {
           ORDER BY u.username ASC
         `, [activity.team_id, activity_id]);
       } else {
-        // No team restriction — show all unregistered
+        // No team restriction
         users = await db.all(`
           SELECT u.id, u.username FROM users u
           WHERE u.is_admin = 0
@@ -59,10 +59,13 @@ module.exports = function (db) {
       });
 
       res.json(users);
-    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'שגיאת שרת' });
+    }
   });
 
-  // POST /api/assignments — admin assigns (no capacity block)
+  // POST /api/assignments — admin assigns (no capacity block for admin)
   router.post('/', requireAdmin, async (req, res) => {
     try {
       const { user_id, activity_id } = req.body;
@@ -75,13 +78,12 @@ module.exports = function (db) {
       const user = await db.get('SELECT * FROM users WHERE id = ?', [user_id]);
       if (!user) return res.status(404).json({ error: 'עובד לא נמצא' });
 
-      const already = await db.get(
-        'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [user_id, activity_id]
-      );
+      const already = await db.get('SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [user_id, activity_id]);
       if (already) return res.status(409).json({ error: `${user.username} כבר משובץ לפעילות זו` });
 
       const userActivities = await db.all(`
-        SELECT a.* FROM activities a JOIN registrations r ON r.activity_id = a.id
+        SELECT a.* FROM activities a
+        JOIN registrations r ON r.activity_id = a.id
         WHERE r.user_id = ? AND a.date = ? AND a.id != ?
       `, [user_id, activity.date, activity_id]);
 
@@ -97,21 +99,26 @@ module.exports = function (db) {
 
       await db.run('INSERT INTO registrations (user_id, activity_id) VALUES (?, ?)', [user_id, activity_id]);
       res.status(201).json({ message: `${user.username} שובץ לפעילות בהצלחה` });
-    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'שגיאת שרת' });
+    }
   });
 
   // DELETE /api/assignments/:activity_id/:user_id
   router.delete('/:activity_id/:user_id', requireAdmin, async (req, res) => {
     try {
       const { activity_id, user_id } = req.params;
-      const reg = await db.get(
-        'SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [user_id, activity_id]
-      );
+      const reg = await db.get('SELECT id FROM registrations WHERE user_id = ? AND activity_id = ?', [user_id, activity_id]);
       if (!reg) return res.status(404).json({ error: 'עובד לא משובץ לפעילות זו' });
+
       const user = await db.get('SELECT username FROM users WHERE id = ?', [user_id]);
       await db.run('DELETE FROM registrations WHERE user_id = ? AND activity_id = ?', [user_id, activity_id]);
       res.json({ message: `${user ? user.username : 'העובד'} הוסר מהפעילות בהצלחה` });
-    } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'שגיאת שרת' });
+    }
   });
 
   return router;

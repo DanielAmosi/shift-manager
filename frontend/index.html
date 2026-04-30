@@ -29,6 +29,10 @@
         <label for="login-username">שם משתמש</label>
         <input type="text" id="login-username" placeholder="הזן שם משתמש..." autocomplete="username" />
       </div>
+      <div class="form-group">
+        <label for="login-password">סיסמה</label>
+        <input type="password" id="login-password" placeholder="הזן סיסמה..." autocomplete="current-password" />
+      </div>
       <div id="login-error" class="error-msg hidden"></div>
       <button id="login-btn" class="btn btn-primary btn-full">
         <span>כניסה למערכת</span>
@@ -63,7 +67,7 @@
         <span>ניהול פעילויות</span>
       </button>
       <button class="nav-item admin-only hidden" data-view="manage-teams">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
         <span>ניהול קבוצות</span>
       </button>
       <button class="nav-item admin-only hidden" data-view="manage-users">
@@ -105,7 +109,7 @@
         </div>
       </div>
 
-      <!-- Tabs: future/past -->
+      <!-- Tabs -->
       <div class="tabs-row">
         <button class="tab-btn active" id="weekly-tab-future" onclick="setWeeklyTab('future')">
           📅 פעילויות עתידיות
@@ -115,7 +119,7 @@
         </button>
       </div>
 
-      <!-- Team filter tabs -->
+      <!-- Team filter -->
       <div id="team-filter-tabs" class="team-tabs-row"></div>
 
       <!-- Future: week grid -->
@@ -206,9 +210,9 @@
         </div>
         <div class="form-grid" style="margin-bottom:0">
           <div class="form-group">
-            <label for="act-team">קבוצה *</label>
+            <label for="act-team">קבוצה</label>
             <select id="act-team" class="assign-select" style="width:100%">
-              <option value="">— בחר קבוצה —</option>
+              <option value="">— ללא קבוצה —</option>
             </select>
           </div>
           <div class="form-group">
@@ -295,16 +299,16 @@
           <span class="info-value" id="modal-overlap"></span>
         </div>
         <div class="modal-info-item">
-          <span class="info-label">קבוצה</span>
-          <span class="info-value" id="modal-team"></span>
-        </div>
-        <div class="modal-info-item">
           <span class="info-label">רשומים</span>
           <span class="info-value" id="modal-count"></span>
         </div>
         <div class="modal-info-item" style="grid-column:1/-1">
           <span class="info-label">ביטול הרשמה</span>
           <span class="info-value" id="modal-lock"></span>
+        </div>
+        <div class="modal-info-item" style="grid-column:1/-1" id="modal-team-row">
+          <span class="info-label">קבוצה</span>
+          <span class="info-value" id="modal-team"></span>
         </div>
       </div>
       <div class="modal-registrations">
@@ -362,7 +366,7 @@
           <label for="edit-title">כותרת *</label>
           <input type="text" id="edit-title" />
         </div>
-        <div class="form-group">
+        <div class="form-group" style="grid-column:1/-1">
           <label for="edit-team">קבוצה</label>
           <select id="edit-team" class="assign-select" style="width:100%">
             <option value="">— ללא קבוצה —</option>
@@ -413,9 +417,9 @@
 </div>
 
 <!-- ===== MANAGE TEAMS VIEW (admin) ===== -->
-<div id="view-manage-teams" style="display:none" class="view">
-  <div class="view-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
-    <div>
+<div id="view-manage-teams" class="view">
+  <div class="view-header">
+    <div class="view-title-group">
       <h2 class="view-title">ניהול קבוצות</h2>
       <p class="view-subtitle">יצירה, מחיקה ושיוך עובדים לקבוצות</p>
     </div>

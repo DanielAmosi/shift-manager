@@ -1007,36 +1007,45 @@ async function loadTeamsView() {
   if (!container) return;
 
   if (allTeams.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><p>אין קבוצות במערכת עדיין</p></div>`;
+    container.innerHTML = `
+      <div class="team-empty-state">
+        <div class="team-empty-icon">🏷️</div>
+        <p class="team-empty-title">אין קבוצות עדיין</p>
+        <p class="team-empty-sub">הוסף את הקבוצה הראשונה בטופס למעלה</p>
+      </div>`;
     return;
   }
 
   container.innerHTML = allTeams.map(t => `
-    <div class="user-card">
-      <div class="user-card-header">
-        <div class="user-card-info">
-          <div class="user-card-avatar" style="background:var(--primary-h);font-size:18px">👥</div>
-          <div>
-            <div class="user-card-name">${escapeHtml(t.name)}</div>
-            <span class="badge badge-user">${t.member_count || 0} חברים</span>
-          </div>
+    <div class="team-item">
+      <div class="team-item-left">
+        <div class="team-item-avatar">${escapeHtml(t.name.charAt(0))}</div>
+        <div class="team-item-info">
+          <span class="team-item-name">${escapeHtml(t.name)}</span>
+          <span class="team-item-count">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            ${t.member_count || 0} חברים
+          </span>
         </div>
-        <button class="btn btn-danger" style="padding:6px 12px;font-size:12px"
-          onclick="deleteTeam(${t.id}, '${escapeHtml(t.name)}')">מחק</button>
       </div>
+      <button class="team-delete-btn" onclick="deleteTeam(${t.id}, '${escapeHtml(t.name)}')" title="מחק קבוצה">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        מחק
+      </button>
     </div>
   `).join('');
 }
 
 async function addTeam() {
-  const name = document.getElementById('new-team-name').value.trim();
+  const input = document.getElementById('new-team-name');
+  const name  = input.value.trim();
   hideError('add-team-error');
   if (!name) { showError('add-team-error', 'נא להזין שם קבוצה'); return; }
   try {
     await API.post('/teams', { name });
     showToast(`הקבוצה "${name}" נוצרה ✅`);
-    document.getElementById('new-team-name').value = '';
-    document.getElementById('add-team-form').classList.add('hidden');
+    input.value = '';
+    input.focus();
     loadTeamsView();
   } catch (e) { showError('add-team-error', e.message); }
 }
@@ -1128,13 +1137,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('new-username').addEventListener('keydown', e => { if (e.key === 'Enter') addUser(); });
 
   // Teams
-  document.getElementById('show-add-team-form')?.addEventListener('click', () => {
-    document.getElementById('add-team-form').classList.remove('hidden');
-  });
-  document.getElementById('cancel-add-team')?.addEventListener('click', () => {
-    document.getElementById('add-team-form').classList.add('hidden');
-    hideError('add-team-error');
-  });
   document.getElementById('add-team-btn')?.addEventListener('click', addTeam);
   document.getElementById('new-team-name')?.addEventListener('keydown', e => { if (e.key === 'Enter') addTeam(); });
 });

@@ -1,6 +1,6 @@
-# 📋 מנהל משמרות — Shift Manager v2
+# 📋 מנהל משמרות — Shift Manager v3
 
-מערכת ניהול משמרות עובדים עם Turso (libSQL) ושיבוץ עובדים על ידי מנהל.
+מערכת ניהול משמרות עובדים עם Turso (libSQL), שיבוץ עובדים, וניהול קבוצות.
 
 ---
 
@@ -55,6 +55,8 @@ turso db tokens create shift-manager
 DB_URL=libsql://shift-manager-YOUR-USERNAME.turso.io
 DB_AUTH_TOKEN=YOUR_TOKEN_HERE
 SESSION_SECRET=any-long-random-string
+ADMIN_PASS=הסיסמה-לאדמין
+USER_PASS=הסיסמה-לעובדים
 ```
 
 לטעינת `.env` מקומית — התקן dotenv:
@@ -80,6 +82,8 @@ require('dotenv').config();
 DB_URL          = libsql://...
 DB_AUTH_TOKEN   = eyJ...
 SESSION_SECRET  = מחרוזת-סודית-כלשהי
+ADMIN_PASS      = סיסמה-לאדמין
+USER_PASS       = סיסמה-לעובדים
 NODE_ENV        = production
 ```
 
@@ -94,11 +98,13 @@ shift-manager/
 │   ├── server.js
 │   ├── database.js              ← Turso/libSQL
 │   └── routes/
-│       ├── auth.js
-│       ├── users.js
-│       ├── activities.js
-│       ├── registrations.js
-│       └── assignments.js       ← חדש: שיבוץ עובדים
+│       ├── auth.js              ← התחברות עם סיסמה (ENV)
+│       ├── users.js             ← ניהול משתמשים + תכונות
+│       ├── teams.js             ← ניהול קבוצות
+│       ├── activities.js        ← פעילויות + multi-day + capacity
+│       ├── registrations.js     ← הרשמה + בדיקת קבוצה
+│       ├── assignments.js       ← שיבוץ ע"י אדמין
+│       └── availability.js     ← זמינות שבועית
 ├── frontend/
 │   ├── index.html
 │   ├── css/style.css
@@ -107,17 +113,58 @@ shift-manager/
 
 ---
 
-## ✨ פיצ'רים חדשים בגרסה זו
+## ✨ פיצ'רים
+
+### ניהול קבוצות (Teams)
+- יצירה ומחיקה של קבוצות (שטח, חפ"ק, אלגוריתמיקה...)
+- שיוך עובדים לקבוצות אחת או יותר
+- פעילות משויכת לקבוצה אחת
+- הרשמה מותרת רק לחברי הקבוצה (נאכף ב-backend)
+- סינון לוח שבועי לפי קבוצה
 
 ### שיבוץ עובדים על ידי מנהל
-- לחץ על כל פעילות בלוח השבועי
-- בחלונית הפעילות → בחר עובד מהרשימה → לחץ **שבץ**
-- ניתן להסיר עובד על ידי לחיצה על × ליד שמו
-- כל חוקי החפיפות נשמרים גם בשיבוץ ידני
+- לחץ על פעילות בלוח השבועי → בחר עובד → שבץ
+- מציג רק עובדי הקבוצה הרלוונטית
+- מציג סטטוס זמינות (זמין 🟢 / מוגבל 🟠 / לא זמין 🔴)
+- כל חוקי החפיפות נשמרים
 
-### API Endpoints חדשים
+### אימות סיסמה
+- כניסה עם שם משתמש + סיסמה
+- סיסמות מוגדרות ב-ENV (לא נשמרות ב-DB)
+
+### פיצ'רים נוספים
+- פעילויות לטווח תאריכים (multi-day)
+- הגבלת כמות משתתפים (capacity)
+- נעילת ביטול הרשמה
+- הערות לפעילות
+- עריכת פעילות
+- תכונות למשתמשים
+- זמינות שבועית לכל עובד
+
+---
+
+## 🔌 API Endpoints
+
+### Auth
 | Method | Path | תיאור |
 |--------|------|-------|
-| GET | `/api/assignments/available/:activity_id` | עובדים זמינים לשיבוץ |
-| POST | `/api/assignments` | שיבוץ עובד לפעילות (admin) |
-| DELETE | `/api/assignments/:activity_id/:user_id` | הסרת עובד מפעילות (admin) |
+| POST | `/api/auth/login` | התחברות |
+| POST | `/api/auth/logout` | התנתקות |
+| GET  | `/api/auth/me` | המשתמש הנוכחי |
+
+### Teams
+| Method | Path | תיאור |
+|--------|------|-------|
+| GET    | `/api/teams` | כל הקבוצות |
+| GET    | `/api/teams/my` | הקבוצות של המשתמש המחובר |
+| POST   | `/api/teams` | יצירת קבוצה (admin) |
+| DELETE | `/api/teams/:id` | מחיקת קבוצה (admin) |
+| POST   | `/api/teams/:id/users/:userId` | הוספת עובד לקבוצה (admin) |
+| DELETE | `/api/teams/:id/users/:userId` | הסרת עובד מקבוצה (admin) |
+
+### Assignments
+| Method | Path | תיאור |
+|--------|------|-------|
+| GET    | `/api/assignments/available/:activity_id` | עובדים זמינים לשיבוץ |
+| POST   | `/api/assignments` | שיבוץ עובד (admin) |
+| DELETE | `/api/assignments/:activity_id/:user_id` | הסרת עובד (admin) |

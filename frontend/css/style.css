@@ -1378,3 +1378,181 @@ input[type="number"]::placeholder { color: var(--text-3); }
   border-color: rgba(240,136,62,0.4);
   color: var(--primary);
 }
+
+/* ===== MANAGE TEAMS VIEW — redesign ===== */
+
+/* Add team card */
+.team-add-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.team-add-icon {
+  font-size: 26px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.team-add-content { flex: 1; min-width: 0; }
+
+.team-add-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.team-add-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.team-add-input {
+  flex: 1;
+  background: var(--bg-3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: 'Heebo', sans-serif;
+  font-size: 14px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  direction: rtl;
+  min-width: 0;
+}
+.team-add-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.team-add-input::placeholder { color: var(--text-3); }
+
+/* Section label */
+.teams-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
+  padding-right: 2px;
+}
+
+/* Team item row */
+.team-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+  gap: 12px;
+}
+.team-item:hover {
+  border-color: var(--border-2);
+  background: var(--bg-3);
+  transform: translateX(-2px);
+}
+.team-item:last-child { margin-bottom: 0; }
+
+.team-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.team-item-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(240,136,62,0.25);
+}
+
+.team-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.team-item-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-item-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+/* Delete button */
+.team-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(248,81,73,0.3);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-family: 'Heebo', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.team-delete-btn:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+/* Empty state for teams */
+.team-empty-state {
+  text-align: center;
+  padding: 56px 24px;
+  background: var(--bg-2);
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-lg);
+}
+.team-empty-icon { font-size: 44px; margin-bottom: 14px; }
+.team-empty-title { font-size: 16px; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
+.team-empty-sub   { font-size: 13px; color: var(--text-3); }
+
+/* Responsive */
+@media (max-width: 500px) {
+  .team-add-card { flex-direction: column; gap: 10px; }
+  .team-add-row  { flex-direction: column; }
+  .team-add-input { width: 100%; }
+  .team-add-btn   { width: 100%; justify-content: center; }
+}

@@ -1449,28 +1449,34 @@ input[type="number"]::placeholder { color: var(--text-3); }
 /* Team item row */
 .team-item {
   display: flex;
+  flex-direction: row-reverse;   /* RTL: name on right, delete on left */
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 8px;
-  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+  transition: border-color var(--transition), background var(--transition);
   gap: 12px;
+  direction: rtl;
 }
 .team-item:hover {
   border-color: var(--border-2);
   background: var(--bg-3);
-  transform: translateX(-2px);
 }
 .team-item:last-child { margin-bottom: 0; }
 
 .team-item-left {
   display: flex;
+  flex-direction: row-reverse;   /* avatar then name, right-to-left */
   align-items: center;
   gap: 12px;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .team-item-avatar {

@@ -1449,7 +1449,7 @@ input[type="number"]::placeholder { color: var(--text-3); }
 /* Team item row */
 .team-item {
   display: flex;
-  flex-direction: row-reverse;   /* RTL: name on right, delete on left */
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   width: 100%;
@@ -1471,7 +1471,7 @@ input[type="number"]::placeholder { color: var(--text-3); }
 
 .team-item-left {
   display: flex;
-  flex-direction: row-reverse;   /* avatar then name, right-to-left */
+  flex-direction: row;
   align-items: center;
   gap: 12px;
   flex: 1;

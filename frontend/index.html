@@ -274,6 +274,36 @@
       <div id="users-list"></div>
     </div>
 
+    <!-- ===== MANAGE TEAMS VIEW (admin) ===== -->
+    <div id="view-manage-teams" class="view">
+      <div class="view-header">
+        <div class="view-title-group">
+          <h2 class="view-title">ניהול קבוצות</h2>
+          <p class="view-subtitle">יצירה, מחיקה ושיוך עובדים לקבוצות</p>
+        </div>
+      </div>
+
+      <div class="team-add-card">
+        <div class="team-add-icon">➕</div>
+        <div class="team-add-content">
+          <h3 class="team-add-title">הוסף קבוצה חדשה</h3>
+          <div class="team-add-row">
+            <input type="text" id="new-team-name"
+              placeholder="לדוגמה: שטח, חפ&quot;ק, אלגוריתמיקה..."
+              class="team-add-input" />
+            <button class="btn btn-primary" id="add-team-btn">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              הוסף קבוצה
+            </button>
+          </div>
+          <div id="add-team-error" class="error-msg hidden"></div>
+        </div>
+      </div>
+
+      <div class="teams-section-label">קבוצות קיימות</div>
+      <div id="teams-list"></div>
+    </div>
+
   </main>
 </div>
 
@@ -414,38 +444,6 @@
       </div>
     </div>
   </div>
-</div>
-
-<!-- ===== MANAGE TEAMS VIEW (admin) ===== -->
-<div id="view-manage-teams" class="view">
-  <div class="view-header">
-    <div class="view-title-group">
-      <h2 class="view-title">ניהול קבוצות</h2>
-      <p class="view-subtitle">יצירה, מחיקה ושיוך עובדים לקבוצות</p>
-    </div>
-  </div>
-
-  <!-- Always-visible add form -->
-  <div class="team-add-card">
-    <div class="team-add-icon">➕</div>
-    <div class="team-add-content">
-      <h3 class="team-add-title">הוסף קבוצה חדשה</h3>
-      <div class="team-add-row">
-        <input type="text" id="new-team-name"
-          placeholder="לדוגמה: שטח, חפ&quot;ק, אלגוריתמיקה..."
-          class="team-add-input" />
-        <button class="btn btn-primary" id="add-team-btn">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          הוסף קבוצה
-        </button>
-      </div>
-      <div id="add-team-error" class="error-msg hidden"></div>
-    </div>
-  </div>
-
-  <!-- Teams list -->
-  <div class="teams-section-label">קבוצות קיימות</div>
-  <div id="teams-list"></div>
 </div>
 
 <div id="toast" class="toast hidden"></div>
